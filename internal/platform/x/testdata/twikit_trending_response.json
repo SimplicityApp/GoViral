@@ -1,0 +1,28 @@
+{
+  "trending": [
+    {
+      "id": "9876543210",
+      "text": "This is a viral tweet about AI and startups!",
+      "created_at": "Sat Feb 15 10:00:00 +0000 2026",
+      "author_username": "techguru",
+      "author_name": "Tech Guru",
+      "likes": 5000,
+      "retweets": 1200,
+      "replies": 300,
+      "impressions": 250000,
+      "niche": "AI"
+    },
+    {
+      "id": "9876543211",
+      "text": "Another trending post about indie hacking.",
+      "created_at": "Fri Feb 14 18:30:00 +0000 2026",
+      "author_username": "indiehacker",
+      "author_name": "Indie Hacker",
+      "likes": 3000,
+      "retweets": 800,
+      "replies": 150,
+      "impressions": 120000,
+      "niche": "indie hacking"
+    }
+  ]
+}

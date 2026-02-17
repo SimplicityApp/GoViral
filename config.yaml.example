@@ -1,0 +1,27 @@
+x:
+  api_key: ""
+  api_secret: ""
+  bearer_token: ""
+  access_token: ""
+  access_token_secret: ""
+  client_id: ""
+  client_secret: ""
+  username: ""
+
+linkedin:
+  client_id: ""
+  client_secret: ""
+  access_token: ""
+
+claude:
+  api_key: ""
+  model: "claude-sonnet-4-20250514"
+
+niches:
+  - "adtech"
+  - "programmatic advertising"
+  - "software engineering"
+  - "tech startups"
+  - "entrepreneurship"
+
+db_path: "~/.goviral/goviral.db"

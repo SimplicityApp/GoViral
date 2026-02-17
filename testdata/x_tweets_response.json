@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "id": "1001",
+      "text": "Hello world! This is my first test tweet.",
+      "created_at": "2024-01-15T10:30:00Z",
+      "public_metrics": {
+        "like_count": 42,
+        "retweet_count": 10,
+        "reply_count": 5,
+        "impression_count": 1000
+      }
+    },
+    {
+      "id": "1002",
+      "text": "Another day, another tweet about Go programming.",
+      "created_at": "2024-01-14T09:00:00Z",
+      "public_metrics": {
+        "like_count": 100,
+        "retweet_count": 25,
+        "reply_count": 15,
+        "impression_count": 5000
+      }
+    }
+  ]
+}

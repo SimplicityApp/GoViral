@@ -1,0 +1,42 @@
+{
+  "elements": [
+    {
+      "id": "urn:li:ugcPost:100001",
+      "author": "urn:li:person:ABC123",
+      "created": {
+        "time": 1771308000000
+      },
+      "specificContent": {
+        "com.linkedin.ugc.ShareContent": {
+          "shareCommentary": {
+            "text": "Excited to share my thoughts on leadership in tech!"
+          }
+        }
+      },
+      "socialDetail": {
+        "totalSocialActivityCounts.numLikes": 150,
+        "totalSocialActivityCounts.numComments": 30,
+        "totalSocialActivityCounts.numShares": 20
+      }
+    },
+    {
+      "id": "urn:li:ugcPost:100002",
+      "author": "urn:li:person:ABC123",
+      "created": {
+        "time": 1771264800000
+      },
+      "specificContent": {
+        "com.linkedin.ugc.ShareContent": {
+          "shareCommentary": {
+            "text": "5 lessons I learned from building a startup."
+          }
+        }
+      },
+      "socialDetail": {
+        "totalSocialActivityCounts.numLikes": 250,
+        "totalSocialActivityCounts.numComments": 45,
+        "totalSocialActivityCounts.numShares": 35
+      }
+    }
+  ]
+}

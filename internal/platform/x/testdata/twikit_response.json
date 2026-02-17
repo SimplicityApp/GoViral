@@ -1,0 +1,22 @@
+{
+  "tweets": [
+    {
+      "id": "1234567890",
+      "text": "Hello world! This is a test tweet.",
+      "created_at": "Wed Jan 15 14:30:00 +0000 2025",
+      "likes": 42,
+      "retweets": 10,
+      "replies": 5,
+      "impressions": 1500
+    },
+    {
+      "id": "1234567891",
+      "text": "Another tweet for testing purposes.",
+      "created_at": "Thu Jan 16 09:00:00 +0000 2025",
+      "likes": 100,
+      "retweets": 25,
+      "replies": 12,
+      "impressions": 5000
+    }
+  ]
+}
