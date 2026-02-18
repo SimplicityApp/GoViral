@@ -12,6 +12,7 @@ import (
 
 // Compile-time interface compliance checks.
 var _ models.PlatformClient = (*FallbackClient)(nil)
+var _ models.LinkedInPoster = (*FallbackClient)(nil)
 
 // linkedinFetcher is an internal interface for testability.
 type linkedinFetcher interface {
@@ -19,11 +20,19 @@ type linkedinFetcher interface {
 	FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error)
 }
 
+// linkedinPoster is an internal interface for testability.
+type linkedinPoster interface {
+	CreatePost(ctx context.Context, text string) (string, error)
+	UploadImage(ctx context.Context, imageData []byte, filename string) (string, error)
+	CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error)
+}
+
 // FallbackClient wraps the official LinkedIn API client with a likit fallback.
 // If the official API fails, it falls back to likit (cookie-based Voyager API).
 type FallbackClient struct {
 	primary         linkedinFetcher
 	likit           linkedinFetcher // may be nil if python is unavailable
+	likitPoster     linkedinPoster  // may be nil if python is unavailable
 	primaryDisabled bool
 }
 
@@ -42,6 +51,7 @@ func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *Fall
 		log.Printf("likit fallback unavailable: %v (official LinkedIn API only)", err)
 	} else {
 		fc.likit = lc
+		fc.likitPoster = lc
 	}
 
 	return fc
@@ -100,6 +110,30 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 		return nil, fmt.Errorf("official LinkedIn API disabled (likit fallback unavailable)")
 	}
 	return fc.likit.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
+}
+
+// CreatePost creates a LinkedIn post via likit (official API has no posting support).
+func (fc *FallbackClient) CreatePost(ctx context.Context, text string) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn posting requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.CreatePost(ctx, text)
+}
+
+// UploadImage uploads an image to LinkedIn via likit (official API has no posting support).
+func (fc *FallbackClient) UploadImage(ctx context.Context, imageData []byte, filename string) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn image upload requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.UploadImage(ctx, imageData, filename)
+}
+
+// CreatePostWithImage creates a LinkedIn post with an image via likit (official API has no posting support).
+func (fc *FallbackClient) CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn posting requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.CreatePostWithImage(ctx, text, imageData, filename)
 }
 
 // checkDisablePrimary disables the primary client for subsequent calls if the

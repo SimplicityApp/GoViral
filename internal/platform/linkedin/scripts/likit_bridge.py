@@ -10,6 +10,7 @@ Commands:
     {"action": "get_my_posts", "limit": 20}
     {"action": "get_feed", "limit": 20}
     {"action": "create_post", "text": "...", "visibility": "PUBLIC"}
+    {"action": "get_trending_posts", "topic": "...", "period": "past-24h", "limit": 10, "from_followed": true, "scrolls": 3}
     {"action": "search_posts", "keywords": "...", "limit": 20}
     {"action": "upload_image", "image_data": "<base64>", "filename": "image.png"}
     {"action": "create_post_with_image", "text": "...", "image_data": "<base64>", "filename": "image.png"}
@@ -95,6 +96,18 @@ async def handle_command(client, cmd):
         visibility = cmd.get("visibility", "PUBLIC")
         urn = await client.create_post(text=text, visibility=visibility)
         return {"urn": urn}
+
+    elif action == "get_trending_posts":
+        topic = cmd.get("topic", "")
+        period = cmd.get("period", "past-24h")
+        limit = cmd.get("limit", 10)
+        from_followed = cmd.get("from_followed", True)
+        scrolls = cmd.get("scrolls", 3)
+        posts = await client.get_trending_posts(
+            topic=topic, period=period, limit=limit,
+            from_followed=from_followed, scrolls=scrolls,
+        )
+        return {"posts": [p.model_dump(mode="json") for p in posts]}
 
     elif action == "search_posts":
         keywords = cmd.get("keywords", "")

@@ -91,29 +91,22 @@ func (c *LikitClient) FetchMyPosts(ctx context.Context, limit int) ([]models.Pos
 	return parseLikitPosts(result)
 }
 
-// FetchTrendingPosts searches for trending LinkedIn posts matching the given niches.
+// FetchTrendingPosts fetches trending LinkedIn posts. It first tries the dedicated
+// get_trending_posts action (which uses likit's trending API), falling back to
+// search_posts with niche keywords if trending fails.
 func (c *LikitClient) FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {
-	// For LinkedIn, we use search_posts with niche keywords.
 	var allPosts []models.TrendingPost
 	seen := make(map[string]bool)
 	now := time.Now()
 
 	for _, niche := range niches {
-		result, err := c.runCommand(ctx, likitCommand{
-			Action:   "search_posts",
-			Keywords: niche,
-			Limit:    limit,
-		})
+		posts, err := c.fetchTrendingForNiche(ctx, niche, period, limit)
 		if err != nil {
-			continue
-		}
-		if errMsg := result["error"]; errMsg != nil {
-			continue
-		}
-
-		posts, err := parseLikitPosts(result)
-		if err != nil {
-			continue
+			// Trending failed, fall back to search_posts.
+			posts, err = c.searchPostsForNiche(ctx, niche, limit)
+			if err != nil {
+				continue
+			}
 		}
 
 		for _, p := range posts {
@@ -144,6 +137,41 @@ func (c *LikitClient) FetchTrendingPosts(ctx context.Context, niches []string, p
 		allPosts = allPosts[:limit]
 	}
 	return allPosts, nil
+}
+
+// fetchTrendingForNiche tries the dedicated get_trending_posts action for a single niche.
+func (c *LikitClient) fetchTrendingForNiche(ctx context.Context, niche string, period string, limit int) ([]models.Post, error) {
+	result, err := c.runCommand(ctx, likitCommand{
+		Action:       "get_trending_posts",
+		Topic:        niche,
+		Period:       period,
+		Limit:        limit,
+		FromFollowed: true,
+		Scrolls:      3,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+	return parseLikitPosts(result)
+}
+
+// searchPostsForNiche falls back to search_posts for a single niche.
+func (c *LikitClient) searchPostsForNiche(ctx context.Context, niche string, limit int) ([]models.Post, error) {
+	result, err := c.runCommand(ctx, likitCommand{
+		Action:   "search_posts",
+		Keywords: niche,
+		Limit:    limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+	return parseLikitPosts(result)
 }
 
 // CreatePost creates a new LinkedIn post.
@@ -269,15 +297,19 @@ func (c *LikitClient) runCommand(ctx context.Context, cmd likitCommand) (map[str
 
 // likitCommand represents a JSON command sent to the likit bridge script.
 type likitCommand struct {
-	Action     string `json:"action"`
-	LiAt       string `json:"li_at,omitempty"`
-	JSessionID string `json:"jsessionid,omitempty"`
-	Text       string `json:"text,omitempty"`
-	Keywords   string `json:"keywords,omitempty"`
-	Visibility string `json:"visibility,omitempty"`
-	ImageData  string `json:"image_data,omitempty"`
-	Filename   string `json:"filename,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
+	Action       string `json:"action"`
+	LiAt         string `json:"li_at,omitempty"`
+	JSessionID   string `json:"jsessionid,omitempty"`
+	Text         string `json:"text,omitempty"`
+	Keywords     string `json:"keywords,omitempty"`
+	Visibility   string `json:"visibility,omitempty"`
+	ImageData    string `json:"image_data,omitempty"`
+	Filename     string `json:"filename,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
+	Topic        string `json:"topic,omitempty"`
+	Period       string `json:"period,omitempty"`
+	FromFollowed bool   `json:"from_followed,omitempty"`
+	Scrolls      int    `json:"scrolls,omitempty"`
 }
 
 // likitPostJSON represents a post in the likit bridge JSON response.

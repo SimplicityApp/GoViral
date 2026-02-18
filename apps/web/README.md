@@ -52,10 +52,10 @@ Output goes to `dist/`. To embed in the server binary, copy `dist/` to `apps/ser
 |------|-------------|
 | Dashboard | Overview with key metrics |
 | Posts | Browse fetched posts from X and LinkedIn |
-| Trending | Discover and filter trending content |
-| Generate | Generate AI content from trending posts |
-| Publish | Publish or schedule generated content |
-| History | View past generated content with status |
+| Trending | Discover and filter trending content; repost button on each card |
+| Generate | Generate AI content from trending posts; supports Quote Tweet mode for reposts |
+| Publish | Publish or schedule generated content; single-tweet preview for quote tweets |
+| History | View past generated content with status; REPOST badge on quote tweets |
 | Settings | Manage API keys, niches, and server config |
 
 ## Theming
