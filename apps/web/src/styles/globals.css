@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "./themes/x.css";
+@import "./themes/linkedin.css";
+
+:root {
+  /* Defaults (X theme) */
+  --color-bg: #000000;
+  --color-card: #16181c;
+  --color-card-hover: #1e2025;
+  --color-accent: #1d9bf0;
+  --color-accent-hover: #1a8cd8;
+  --color-text: #e7e9ea;
+  --color-text-secondary: #71767b;
+  --color-border: #2f3336;
+  --color-like: #f91880;
+  --color-repost: #00ba7c;
+  --color-comment: #1d9bf0;
+  --color-view: #71767b;
+  --radius-card: 16px;
+  --radius-button: 9999px;
+  --radius-input: 4px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}

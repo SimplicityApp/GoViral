@@ -23,6 +23,7 @@ import (
 var _ models.PlatformClient = (*Client)(nil)
 var _ models.PlatformPoster = (*Client)(nil)
 var _ models.MediaPoster = (*Client)(nil)
+var _ models.QuotePoster = (*Client)(nil)
 
 const (
 	baseURL           = "https://api.twitter.com/2"
@@ -58,6 +59,15 @@ func NewClient(cfg config.XConfig) *Client {
 func (c *Client) PostTweet(ctx context.Context, text string) (string, error) {
 	payload := map[string]interface{}{
 		"text": text,
+	}
+	return c.doPostTweet(ctx, payload)
+}
+
+// PostQuoteTweet posts a quote tweet and returns the new tweet ID.
+func (c *Client) PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
+	payload := map[string]interface{}{
+		"text":           text,
+		"quote_tweet_id": quoteTweetID,
 	}
 	return c.doPostTweet(ctx, payload)
 }

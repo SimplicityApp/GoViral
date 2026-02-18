@@ -1,0 +1,17 @@
+[data-platform="linkedin"] {
+  --color-bg: #f3f2ef;
+  --color-card: #ffffff;
+  --color-card-hover: #f8f8f8;
+  --color-accent: #0a66c2;
+  --color-accent-hover: #004182;
+  --color-text: #191919;
+  --color-text-secondary: #666666;
+  --color-border: #e0dfdc;
+  --color-like: #0a66c2;
+  --color-repost: #057642;
+  --color-comment: #0a66c2;
+  --color-view: #666666;
+  --radius-card: 8px;
+  --radius-button: 16px;
+  --radius-input: 4px;
+}

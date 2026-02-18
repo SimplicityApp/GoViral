@@ -14,6 +14,8 @@ import (
 var _ models.PlatformClient = (*FallbackClient)(nil)
 var _ models.PlatformPoster = (*FallbackClient)(nil)
 var _ models.MediaPoster = (*FallbackClient)(nil)
+var _ models.PlatformScheduler = (*FallbackClient)(nil)
+var _ models.QuotePoster = (*FallbackClient)(nil)
 
 // fetcher is an internal interface for testability, matching the PlatformClient methods.
 type fetcher interface {
@@ -21,10 +23,11 @@ type fetcher interface {
 	FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error)
 }
 
-// poster is an internal interface for testability, matching the PlatformPoster and MediaPoster methods.
+// poster is an internal interface for testability, matching the PlatformPoster, MediaPoster, and QuotePoster methods.
 type poster interface {
 	PostTweet(ctx context.Context, text string) (string, error)
 	PostReply(ctx context.Context, text string, inReplyToID string) (string, error)
+	PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error)
 	UploadMedia(ctx context.Context, imageData []byte, mimeType string) (string, error)
 	PostTweetWithMedia(ctx context.Context, text string, mediaIDs []string) (string, error)
 	PostReplyWithMedia(ctx context.Context, text string, inReplyToID string, mediaIDs []string) (string, error)
@@ -253,6 +256,50 @@ func (fc *FallbackClient) PostReplyWithMedia(ctx context.Context, text string, i
 		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
 	}
 	return fc.twikitPoster.PostReplyWithMedia(ctx, text, inReplyToID, mediaIDs)
+}
+
+// PostQuoteTweet posts a quote tweet, falling back to twikit on account-level errors.
+func (fc *FallbackClient) PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
+	if !fc.primaryDisabled {
+		id, primaryErr := fc.primaryPoster.PostQuoteTweet(ctx, text, quoteTweetID)
+		if primaryErr == nil {
+			return id, nil
+		}
+		fc.checkDisablePrimary(primaryErr)
+
+		if fc.twikitPoster == nil {
+			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+		}
+
+		log.Printf("primary X API failed (%v), trying twikit fallback for quote tweet (quoting %s)...", primaryErr, quoteTweetID)
+		id, twikitErr := fc.twikitPoster.PostQuoteTweet(ctx, text, quoteTweetID)
+		if twikitErr != nil {
+			log.Printf("twikit fallback also failed for quote tweet: %v", twikitErr)
+			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
+		}
+		return id, nil
+	}
+
+	if fc.twikitPoster == nil {
+		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+	}
+	id, err := fc.twikitPoster.PostQuoteTweet(ctx, text, quoteTweetID)
+	if err != nil {
+		log.Printf("twikit quote tweet failed (primary disabled): %v", err)
+	}
+	return id, err
+}
+
+// ScheduleTweet schedules a tweet via twikit (X API v2 doesn't support scheduled tweets).
+func (fc *FallbackClient) ScheduleTweet(ctx context.Context, text string, scheduledAtUnix int64) (string, error) {
+	if fc.twikitPoster == nil {
+		return "", fmt.Errorf("scheduled tweets require twikit (cookie-based auth); twikit is unavailable")
+	}
+	tc, ok := fc.twikitPoster.(*TwikitClient)
+	if !ok {
+		return "", fmt.Errorf("twikit poster does not support scheduling")
+	}
+	return tc.ScheduleTweet(ctx, text, scheduledAtUnix)
 }
 
 // checkDisablePrimary disables the primary client for subsequent calls if the

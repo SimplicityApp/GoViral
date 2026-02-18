@@ -19,7 +19,9 @@ type GenerateRequest struct {
 	TargetPlatform string
 	Niches         []string
 	Count          int
-	MaxChars       int // Maximum character length for generated content (0 = no limit)
+	MaxChars       int  // Maximum character length for generated content (0 = no limit)
+	ForceImage     bool // When true, always generate an image prompt
+	IsRepost       bool // When true, generate quote tweet commentary instead of full rewrites
 }
 
 // GenerateResult contains a single generated content variation.

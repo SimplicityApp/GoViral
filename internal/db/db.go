@@ -115,6 +115,10 @@ func (db *DB) migrate() error {
 	// Add media_json column to trending_posts
 	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN media_json TEXT DEFAULT '[]'")
 
+	// Add repost columns to generated_content
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN is_repost INTEGER DEFAULT 0")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN quote_tweet_id TEXT DEFAULT ''")
+
 	return nil
 }
 
@@ -355,8 +359,8 @@ func (db *DB) GetTrendingPostByID(id int64) (*models.TrendingPost, error) {
 // InsertGeneratedContent inserts a new generated content record.
 func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error) {
 	result, err := db.conn.Exec(
-		"INSERT INTO generated_content (source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath,
+		"INSERT INTO generated_content (source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path, is_repost, quote_tweet_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath, gc.IsRepost, gc.QuoteTweetID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting generated content: %w", err)
@@ -366,7 +370,7 @@ func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error)
 
 // GetGeneratedContent returns generated content with optional status filter.
 func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedContent, error) {
-	query := "SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, '') FROM generated_content"
+	query := "SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, '') FROM generated_content"
 	var args []interface{}
 
 	if status != "" {
@@ -388,7 +392,7 @@ func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedC
 	var contents []models.GeneratedContent
 	for rows.Next() {
 		var gc models.GeneratedContent
-		if err := rows.Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath); err != nil {
+		if err := rows.Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID); err != nil {
 			return nil, fmt.Errorf("scanning generated content row: %w", err)
 		}
 		contents = append(contents, gc)
@@ -400,9 +404,9 @@ func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedC
 func (db *DB) GetGeneratedContentByID(id int64) (*models.GeneratedContent, error) {
 	var gc models.GeneratedContent
 	err := db.conn.QueryRow(
-		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, '') FROM generated_content WHERE id = ?",
+		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, '') FROM generated_content WHERE id = ?",
 		id,
-	).Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath)
+	).Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -417,6 +421,24 @@ func (db *DB) UpdateGeneratedContentStatus(id int64, status string) error {
 	_, err := db.conn.Exec("UPDATE generated_content SET status = ? WHERE id = ?", status, id)
 	if err != nil {
 		return fmt.Errorf("updating generated content status: %w", err)
+	}
+	return nil
+}
+
+// UpdateGeneratedContentText updates the generated_content text of a record.
+func (db *DB) UpdateGeneratedContentText(id int64, content string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET generated_content = ? WHERE id = ?", content, id)
+	if err != nil {
+		return fmt.Errorf("updating generated content text: %w", err)
+	}
+	return nil
+}
+
+// DeleteGeneratedContent removes a generated content record by ID.
+func (db *DB) DeleteGeneratedContent(id int64) error {
+	_, err := db.conn.Exec("DELETE FROM generated_content WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("deleting generated content: %w", err)
 	}
 	return nil
 }
@@ -490,6 +512,22 @@ func (db *DB) UpdateScheduledPostStatus(id int64, status string, errMsg string) 
 	)
 	if err != nil {
 		return fmt.Errorf("updating scheduled post status: %w", err)
+	}
+	return nil
+}
+
+// DeleteScheduledPost deletes a scheduled post by ID.
+func (db *DB) DeleteScheduledPost(id int64) error {
+	result, err := db.conn.Exec("DELETE FROM scheduled_posts WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("deleting scheduled post: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("scheduled post %d not found", id)
 	}
 	return nil
 }

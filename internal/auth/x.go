@@ -46,11 +46,11 @@ func XAuth(cfg *config.Config, port int) error {
 		return fmt.Errorf("X client_id is required")
 	}
 
-	codeVerifier, err := generateCodeVerifier()
+	codeVerifier, err := GenerateCodeVerifier()
 	if err != nil {
 		return fmt.Errorf("generating PKCE code verifier: %w", err)
 	}
-	codeChallenge := generateCodeChallenge(codeVerifier)
+	codeChallenge := GenerateCodeChallenge(codeVerifier)
 
 	state, err := generateRandomString(32)
 	if err != nil {
@@ -87,7 +87,7 @@ func XAuth(cfg *config.Config, port int) error {
 	}
 
 	// Exchange code for access token.
-	tokenResp, err := exchangeXCode(code, cfg.X.ClientID, cfg.X.ClientSecret, codeVerifier, redirectURI)
+	tokenResp, err := ExchangeXCode(code, cfg.X.ClientID, cfg.X.ClientSecret, codeVerifier, redirectURI)
 	if err != nil {
 		return fmt.Errorf("exchanging authorization code: %w", err)
 	}
@@ -105,14 +105,15 @@ func XAuth(cfg *config.Config, port int) error {
 	return nil
 }
 
-// xTokenResponse holds the fields returned by the X token endpoint.
-type xTokenResponse struct {
+// XTokenResponse holds the fields returned by the X token endpoint.
+type XTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"`
 }
 
-func exchangeXCode(code, clientID, clientSecret, codeVerifier, redirectURI string) (*xTokenResponse, error) {
+// ExchangeXCode exchanges an authorization code for an access token using the X token endpoint.
+func ExchangeXCode(code, clientID, clientSecret, codeVerifier, redirectURI string) (*XTokenResponse, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
@@ -142,7 +143,7 @@ func exchangeXCode(code, clientID, clientSecret, codeVerifier, redirectURI strin
 		return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var tokenResp xTokenResponse
+	var tokenResp XTokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
@@ -191,7 +192,7 @@ func RefreshXToken(cfg *config.Config) error {
 		return fmt.Errorf("refresh token endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var tokenResp xTokenResponse
+	var tokenResp XTokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return fmt.Errorf("parsing refresh response: %w", err)
 	}
@@ -215,13 +216,13 @@ func RefreshXToken(cfg *config.Config) error {
 	return nil
 }
 
-// generateCodeVerifier creates a cryptographically random PKCE code verifier.
-func generateCodeVerifier() (string, error) {
+// GenerateCodeVerifier creates a cryptographically random PKCE code verifier.
+func GenerateCodeVerifier() (string, error) {
 	return generateRandomString(64)
 }
 
-// generateCodeChallenge derives a S256 code challenge from a code verifier.
-func generateCodeChallenge(verifier string) string {
+// GenerateCodeChallenge derives a S256 code challenge from a code verifier.
+func GenerateCodeChallenge(verifier string) string {
 	h := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }

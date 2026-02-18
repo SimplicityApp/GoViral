@@ -17,6 +17,8 @@ type GeneratedContent struct {
 	PostedAt         *time.Time
 	ImagePrompt      string
 	ImagePath        string
+	IsRepost         bool
+	QuoteTweetID     string
 }
 
 // ScheduledPost represents a post scheduled for future publishing.

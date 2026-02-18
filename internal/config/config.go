@@ -14,8 +14,16 @@ type Config struct {
 	LinkedIn LinkedInConfig `yaml:"linkedin"`
 	Claude   ClaudeConfig   `yaml:"claude"`
 	Gemini   GeminiConfig   `yaml:"gemini"`
+	Server   ServerConfig   `yaml:"server"`
 	Niches   []string       `yaml:"niches"`
 	DBPath   string         `yaml:"db_path"`
+}
+
+// ServerConfig contains HTTP server settings.
+type ServerConfig struct {
+	APIKey         string   `yaml:"api_key"`
+	Port           int      `yaml:"port"`
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // GeminiConfig contains Google Gemini API settings.
@@ -96,6 +104,10 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Gemini.Model == "" {
 		cfg.Gemini.Model = "gemini-2.0-flash-exp"
+	}
+
+	if cfg.Server.Port == 0 {
+		cfg.Server.Port = 8080
 	}
 
 	return &cfg, nil

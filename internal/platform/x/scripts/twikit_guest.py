@@ -224,6 +224,102 @@ def create_tweet(text, reply_to=None, media_ids_json=None):
     return asyncio.run(_create())
 
 
+def create_quote_tweet(text, quote_tweet_id):
+    """Create a quote tweet using cookie-based auth via direct GQL.
+
+    twikit's create_tweet() doesn't support quote_tweet_id, so we call
+    the CreateTweet GraphQL endpoint directly with attachment_url in the
+    variables, which is how X's web client creates quote tweets.
+    """
+    import asyncio
+
+    async def _create():
+        from twikit import Client
+        from twikit.client.gql import Endpoint, FEATURES, get_query_id
+
+        client = Client("en-US")
+        client.load_cookies(COOKIES_PATH)
+
+        variables = {
+            "tweet_text": text,
+            "dark_request": False,
+            "media": {
+                "media_entities": [],
+                "possibly_sensitive": False,
+            },
+            "semantic_annotation_ids": [],
+            "attachment_url": f"https://x.com/i/status/{quote_tweet_id}",
+        }
+
+        data = {
+            "variables": variables,
+            "queryId": get_query_id(Endpoint.CREATE_TWEET),
+            "features": FEATURES,
+        }
+
+        response, _ = await client.post(
+            Endpoint.CREATE_TWEET,
+            json=data,
+            headers=client._base_headers,
+        )
+
+        tweet_id = response["data"]["create_tweet"]["tweet_results"]["result"]["rest_id"]
+        client.save_cookies(COOKIES_PATH)
+        return {"tweet_id": str(tweet_id)}
+
+    return asyncio.run(_create())
+
+
+def schedule_tweet(text, scheduled_at_unix, media_ids_json=None):
+    """Schedule a tweet for future posting via X's native scheduling.
+
+    twikit's create_scheduled_tweet omits the required 'features' dict,
+    so we call the GQL endpoint directly with features included.
+    """
+    import asyncio
+
+    async def _schedule():
+        from twikit import Client
+        from twikit.client.gql import Endpoint, FEATURES, get_query_id
+
+        client = Client("en-US")
+        client.load_cookies(COOKIES_PATH)
+
+        media_ids = []
+        if media_ids_json:
+            parsed = json.loads(media_ids_json)
+            if parsed:
+                media_ids = parsed
+
+        variables = {
+            "post_tweet_request": {
+                "auto_populate_reply_metadata": False,
+                "status": text,
+                "exclude_reply_user_ids": [],
+                "media_ids": media_ids,
+            },
+            "execute_at": int(scheduled_at_unix),
+        }
+
+        data = {
+            "variables": variables,
+            "queryId": get_query_id(Endpoint.CREATE_SCHEDULED_TWEET),
+            "features": FEATURES,
+        }
+
+        response, _ = await client.post(
+            Endpoint.CREATE_SCHEDULED_TWEET,
+            json=data,
+            headers=client._base_headers,
+        )
+
+        scheduled_tweet_id = response["data"]["tweet"]["rest_id"]
+        client.save_cookies(COOKIES_PATH)
+        return {"scheduled_tweet_id": str(scheduled_tweet_id)}
+
+    return asyncio.run(_schedule())
+
+
 def main():
     if len(sys.argv) < 2:
         json.dump({"error": "usage: twikit_guest.py <command> [args...]"}, sys.stdout)
@@ -360,6 +456,61 @@ def main():
 
         try:
             result = create_tweet(text, reply_to, media_ids_json)
+            json.dump(result, sys.stdout)
+        except Exception as e:
+            json.dump({"error": str(e)}, sys.stdout)
+            sys.exit(1)
+
+    elif command == "create_quote_tweet":
+        if len(sys.argv) < 4:
+            json.dump(
+                {"error": "usage: twikit_guest.py create_quote_tweet <text> <quote_tweet_id>"},
+                sys.stdout,
+            )
+            sys.exit(1)
+
+        text = sys.argv[2]
+        quote_tweet_id = sys.argv[3]
+
+        if not os.path.exists(COOKIES_PATH):
+            json.dump(
+                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                sys.stdout,
+            )
+            sys.exit(1)
+
+        ensure_package("twikit")
+
+        try:
+            result = create_quote_tweet(text, quote_tweet_id)
+            json.dump(result, sys.stdout)
+        except Exception as e:
+            json.dump({"error": str(e)}, sys.stdout)
+            sys.exit(1)
+
+    elif command == "schedule_tweet":
+        if len(sys.argv) < 4:
+            json.dump(
+                {"error": "usage: twikit_guest.py schedule_tweet <text> <scheduled_at_unix> [media_ids_json]"},
+                sys.stdout,
+            )
+            sys.exit(1)
+
+        text = sys.argv[2]
+        scheduled_at_unix = sys.argv[3]
+        media_ids_json = sys.argv[4] if len(sys.argv) > 4 else None
+
+        if not os.path.exists(COOKIES_PATH):
+            json.dump(
+                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                sys.stdout,
+            )
+            sys.exit(1)
+
+        ensure_package("twikit")
+
+        try:
+            result = schedule_tweet(text, scheduled_at_unix, media_ids_json)
             json.dump(result, sys.stdout)
         except Exception as e:
             json.dump({"error": str(e)}, sys.stdout)

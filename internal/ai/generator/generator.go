@@ -10,7 +10,7 @@ import (
 	"github.com/shuhao/goviral/pkg/models"
 )
 
-const systemPrompt = `You are a viral content ghostwriter. Your job is to take a trending post and rewrite it to match a specific person's voice and style while keeping the viral potential.
+const systemPromptBase = `You are a viral content ghostwriter. Your job is to take a trending post and rewrite it to match a specific person's voice and style while keeping the viral potential.
 
 Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
 - "content": the rewritten post (ready to copy-paste)
@@ -18,6 +18,19 @@ Respond ONLY with valid JSON array, no markdown formatting. Each element should 
 - "confidence_score": number 1-10 on viral potential
 - "suggest_image": boolean — true if an accompanying image would significantly boost engagement for this post
 - "image_prompt": if suggest_image is true, provide a detailed image generation prompt describing the ideal image to pair with this post. The prompt should describe composition, style, colors, and subject matter. If suggest_image is false, leave this as an empty string.`
+
+const systemPromptRepost = `You are a quote tweet specialist. Your job is to write short, punchy commentary for a quote tweet (repost) of a trending post. The commentary should match the person's voice and add value — a hot take, amplification, personal anecdote, or contrarian view.
+
+Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
+- "content": the quote tweet commentary (1-3 sentences, ideally under 200 characters)
+- "viral_mechanic": brief note on what angle you took (hot take, amplification, anecdote, contrarian, etc.)
+- "confidence_score": number 1-10 on viral potential
+- "suggest_image": boolean — usually false for quote tweets since the original post is embedded visually
+- "image_prompt": if suggest_image is true, provide a detailed image generation prompt. If false, leave as empty string.`
+
+const forceImageSuffix = `
+
+IMPORTANT: For every variation, you MUST set "suggest_image" to true and provide a detailed "image_prompt". Every post should have an accompanying image.`
 
 // Generator implements models.ContentGenerator using a Claude MessageSender.
 type Generator struct {
@@ -36,7 +49,15 @@ func (g *Generator) Generate(ctx context.Context, req models.GenerateRequest) ([
 		return nil, fmt.Errorf("generating content: %w", err)
 	}
 
-	response, err := g.client.SendMessage(ctx, systemPrompt, userMessage)
+	prompt := systemPromptBase
+	if req.IsRepost {
+		prompt = systemPromptRepost
+	}
+	if req.ForceImage {
+		prompt += forceImageSuffix
+	}
+
+	response, err := g.client.SendMessage(ctx, prompt, userMessage)
 	if err != nil {
 		return nil, fmt.Errorf("generating content: %w", err)
 	}
@@ -82,11 +103,19 @@ func buildUserMessage(req models.GenerateRequest) (string, error) {
 	}
 
 	fmt.Fprintf(&b, "## Instructions\n")
-	fmt.Fprintf(&b, "1. Identify why this post went viral\n")
-	fmt.Fprintf(&b, "2. Rewrite it matching the persona voice above\n")
-	fmt.Fprintf(&b, "3. Adapt to these niches: %s\n", strings.Join(req.Niches, ", "))
-	fmt.Fprintf(&b, "4. Keep the viral mechanics intact\n")
-	fmt.Fprintf(&b, "5. Optimize for %s platform\n\n", req.TargetPlatform)
+	if req.IsRepost {
+		fmt.Fprintf(&b, "1. Identify why this post went viral and what makes it shareable\n")
+		fmt.Fprintf(&b, "2. Write short quote tweet commentary (1-3 sentences) in the persona voice above\n")
+		fmt.Fprintf(&b, "3. Add value with a hot take, amplification, personal anecdote, or contrarian view\n")
+		fmt.Fprintf(&b, "4. Keep it punchy — the original post will be embedded below your commentary\n")
+		fmt.Fprintf(&b, "5. Optimize for %s platform\n\n", req.TargetPlatform)
+	} else {
+		fmt.Fprintf(&b, "1. Identify why this post went viral\n")
+		fmt.Fprintf(&b, "2. Rewrite it matching the persona voice above\n")
+		fmt.Fprintf(&b, "3. Adapt to these niches: %s\n", strings.Join(req.Niches, ", "))
+		fmt.Fprintf(&b, "4. Keep the viral mechanics intact\n")
+		fmt.Fprintf(&b, "5. Optimize for %s platform\n\n", req.TargetPlatform)
+	}
 	if req.MaxChars > 0 {
 		fmt.Fprintf(&b, "6. Each post MUST be %d characters or fewer\n\n", req.MaxChars)
 	}

@@ -20,3 +20,20 @@ type MediaPoster interface {
 	PostTweetWithMedia(ctx context.Context, text string, mediaIDs []string) (string, error)
 	PostReplyWithMedia(ctx context.Context, text string, inReplyToID string, mediaIDs []string) (string, error)
 }
+
+// PlatformScheduler defines the interface for scheduling content on a platform natively.
+type PlatformScheduler interface {
+	ScheduleTweet(ctx context.Context, text string, scheduledAtUnix int64) (string, error)
+}
+
+// QuotePoster defines the interface for posting quote tweets (reposts with commentary).
+type QuotePoster interface {
+	PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error)
+}
+
+// LinkedInPoster defines the interface for posting content to LinkedIn.
+type LinkedInPoster interface {
+	CreatePost(ctx context.Context, text string) (string, error)
+	UploadImage(ctx context.Context, imageData []byte, filename string) (string, error)
+	CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error)
+}

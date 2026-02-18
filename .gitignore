@@ -47,3 +47,5 @@ venv/
 
 # GoViral local data
 ~/.goviral/
+tmp/
+server

@@ -1,0 +1,17 @@
+[data-platform="x"] {
+  --color-bg: #000000;
+  --color-card: #16181c;
+  --color-card-hover: #1e2025;
+  --color-accent: #1d9bf0;
+  --color-accent-hover: #1a8cd8;
+  --color-text: #e7e9ea;
+  --color-text-secondary: #71767b;
+  --color-border: #2f3336;
+  --color-like: #f91880;
+  --color-repost: #00ba7c;
+  --color-comment: #1d9bf0;
+  --color-view: #71767b;
+  --radius-card: 16px;
+  --radius-button: 9999px;
+  --radius-input: 4px;
+}

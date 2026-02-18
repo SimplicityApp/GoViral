@@ -121,6 +121,20 @@ func (c *TwikitClient) PostTweet(ctx context.Context, text string) (string, erro
 	return parseTwikitTweetID(stdout.Bytes())
 }
 
+// PostQuoteTweet creates a quote tweet via the twikit Python subprocess.
+func (c *TwikitClient) PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_quote_tweet", text, quoteTweetID)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", parseTwikitError(err, stdout.Bytes(), stderr.String(), "posting quote tweet")
+	}
+
+	return parseTwikitTweetID(stdout.Bytes())
+}
+
 // PostReply creates a reply to an existing tweet via the twikit Python subprocess.
 func (c *TwikitClient) PostReply(ctx context.Context, text string, inReplyToID string) (string, error) {
 	var stdout, stderr bytes.Buffer
@@ -242,6 +256,35 @@ func (c *TwikitClient) PostReplyWithMedia(ctx context.Context, text string, inRe
 	}
 
 	return parseTwikitTweetID(stdout.Bytes())
+}
+
+// ScheduleTweet schedules a tweet for future posting via X's native scheduling.
+func (c *TwikitClient) ScheduleTweet(ctx context.Context, text string, scheduledAtUnix int64) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
+		"schedule_tweet", text, strconv.FormatInt(scheduledAtUnix, 10))
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", parseTwikitError(err, stdout.Bytes(), stderr.String(), "scheduling tweet")
+	}
+
+	var errResp twikitErrorResponse
+	if err := json.Unmarshal(stdout.Bytes(), &errResp); err == nil && errResp.Error != "" {
+		return "", fmt.Errorf("twikit: %s", errResp.Error)
+	}
+
+	var resp struct {
+		ScheduledTweetID string `json:"scheduled_tweet_id"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		return "", fmt.Errorf("parsing twikit schedule response: %w", err)
+	}
+	if resp.ScheduledTweetID == "" {
+		return "", fmt.Errorf("twikit returned empty scheduled_tweet_id")
+	}
+	return resp.ScheduledTweetID, nil
 }
 
 // FetchTrendingPosts searches for trending/top tweets matching the given niches

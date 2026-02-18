@@ -71,7 +71,7 @@ func LinkedInAuth(cfg *config.Config, port int) error {
 	}
 
 	// Exchange code for access token.
-	token, err := exchangeLinkedInCode(code, cfg.LinkedIn.ClientID, cfg.LinkedIn.ClientSecret, redirectURI)
+	token, err := ExchangeLinkedInCode(code, cfg.LinkedIn.ClientID, cfg.LinkedIn.ClientSecret, redirectURI)
 	if err != nil {
 		return fmt.Errorf("exchanging authorization code: %w", err)
 	}
@@ -85,7 +85,8 @@ func LinkedInAuth(cfg *config.Config, port int) error {
 	return nil
 }
 
-func exchangeLinkedInCode(code, clientID, clientSecret, redirectURI string) (string, error) {
+// ExchangeLinkedInCode exchanges an authorization code for a LinkedIn access token.
+func ExchangeLinkedInCode(code, clientID, clientSecret, redirectURI string) (string, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
