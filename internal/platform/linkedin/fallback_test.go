@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/shuhao/goviral/pkg/models"
 )
@@ -38,6 +39,18 @@ func (m *mockLinkedinPoster) UploadImage(_ context.Context, _ []byte, _ string) 
 }
 
 func (m *mockLinkedinPoster) CreatePostWithImage(_ context.Context, _ string, _ []byte, _ string) (string, error) {
+	return m.postID, m.err
+}
+
+func (m *mockLinkedinPoster) Repost(_ context.Context, _ string, _ string) (string, error) {
+	return m.postID, m.err
+}
+
+func (m *mockLinkedinPoster) CreateScheduledPost(_ context.Context, _ string, _ time.Time) (string, error) {
+	return m.postID, m.err
+}
+
+func (m *mockLinkedinPoster) CreateScheduledPostWithImage(_ context.Context, _ string, _ []byte, _ string, _ time.Time) (string, error) {
 	return m.postID, m.err
 }
 
