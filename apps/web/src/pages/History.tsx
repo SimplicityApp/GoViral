@@ -1,20 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useHistoryQuery, useUpdateStatusMutation, useDeleteContentMutation } from '@/hooks/useHistory'
 import { HistoryFilters } from '@/components/history/HistoryFilters'
 import { HistoryList } from '@/components/history/HistoryList'
 
 export function History() {
   const navigate = useNavigate()
+  const platform = usePlatformParam()
   const [activeStatus, setActiveStatus] = useState('all')
   const statusFilter = activeStatus === 'all' ? undefined : activeStatus
-  const { data: items, isLoading } = useHistoryQuery(statusFilter)
+  const { data: itemsRaw, isLoading } = useHistoryQuery(statusFilter)
+  const items = itemsRaw?.filter((i) => i.target_platform === platform)
   const updateStatus = useUpdateStatusMutation()
   const deleteContent = useDeleteContentMutation()
 
   const handleStatusChange = (id: number, status: 'draft' | 'approved' | 'posted') => {
     if (status === 'posted') {
-      navigate(`/publish?id=${id}`)
+      navigate(`/${platform}/publish?id=${id}`)
       return
     }
     updateStatus.mutate({ id, status })

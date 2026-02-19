@@ -1,22 +1,26 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { TrendingPost } from '@/lib/types'
-import { usePlatformStore } from '@/stores/platform-store'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useTrendingQuery, useDiscoverMutation } from '@/hooks/useTrending'
+import { useConfigQuery } from '@/hooks/useConfig'
 import { TrendingFilters } from '@/components/trending/TrendingFilters'
 import { TrendingList } from '@/components/trending/TrendingList'
 import { Sparkles } from 'lucide-react'
 
 export function Trending() {
-  const { activePlatform } = usePlatformStore()
+  const platform = usePlatformParam()
   const navigate = useNavigate()
+  const { data: config } = useConfigQuery()
+  const platformNiches =
+    platform === 'linkedin' ? (config?.linkedin_niches ?? []) : (config?.niches ?? [])
   const [period, setPeriod] = useState('24h')
   const [minLikes, setMinLikes] = useState('')
   const [niche, setNiche] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const { data: posts, isLoading } = useTrendingQuery({
-    platform: activePlatform,
+    platform: platform,
     period,
     min_likes: minLikes ? Number(minLikes) : undefined,
     niche: niche || undefined,
@@ -25,7 +29,7 @@ export function Trending() {
 
   const handleDiscover = () => {
     discoverMutation.mutate({
-      platform: activePlatform,
+      platform: platform,
       period,
       min_likes: minLikes ? Number(minLikes) : undefined,
       niche: niche || undefined,
@@ -42,12 +46,12 @@ export function Trending() {
   }
 
   const handleRepost = (post: TrendingPost) => {
-    navigate(`/generate?ids=${post.id}&step=1&repost=true`)
+    navigate(`/${platform}/generate?ids=${post.id}&step=1&repost=true`)
   }
 
   const handleConfigure = () => {
     const ids = Array.from(selectedIds).join(',')
-    navigate(`/generate?ids=${ids}&step=1`)
+    navigate(`/${platform}/generate?ids=${ids}&step=1`)
   }
 
   return (
@@ -58,10 +62,12 @@ export function Trending() {
           period={period}
           minLikes={minLikes}
           niche={niche}
+          niches={platformNiches}
           onPeriodChange={setPeriod}
           onMinLikesChange={setMinLikes}
           onNicheChange={setNiche}
           onDiscover={handleDiscover}
+          onManageNiches={() => navigate('/settings')}
           isDiscovering={discoverMutation.isRunning}
         />
       </div>

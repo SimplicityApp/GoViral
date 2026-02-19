@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { usePlatformStore } from '@/stores/platform-store'
+import { useQueryClient } from '@tanstack/react-query'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePostsQuery } from '@/hooks/usePosts'
 import { useTrendingQuery } from '@/hooks/useTrending'
 import { useHistoryQuery } from '@/hooks/useHistory'
-import { usePersonaQuery } from '@/hooks/usePersona'
+import { usePersonaQuery, useBuildPersonaMutation } from '@/hooks/usePersona'
 import { useScheduleQuery, useCancelScheduleMutation, useRunDueMutation, useAcknowledgeScheduleMutation } from '@/hooks/usePublish'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { formatCount, formatRelativeTime, formatScheduledTime } from '@/lib/format'
@@ -17,6 +18,7 @@ import {
   User,
   Trash2,
   CheckCircle,
+  RefreshCw,
 } from 'lucide-react'
 
 function StatCard({
@@ -41,18 +43,27 @@ function StatCard({
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { activePlatform } = usePlatformStore()
-  const { data: posts, isLoading: postsLoading } = usePostsQuery(activePlatform)
+  const platform = usePlatformParam()
+  const { data: posts, isLoading: postsLoading } = usePostsQuery(platform)
   const { data: trending, isLoading: trendingLoading } = useTrendingQuery({
-    platform: activePlatform,
+    platform,
   })
-  const { data: history, isLoading: historyLoading } = useHistoryQuery(undefined, 5)
-  const { data: posted } = useHistoryQuery('posted')
-  const { data: persona } = usePersonaQuery(activePlatform)
-  const { data: scheduled } = useScheduleQuery()
+  const { data: historyRaw, isLoading: historyLoading } = useHistoryQuery()
+  const { data: postedRaw } = useHistoryQuery('posted')
+  const { data: persona } = usePersonaQuery(platform)
+  const { data: scheduledRaw } = useScheduleQuery()
+  const queryClient = useQueryClient()
+  const buildPersona = useBuildPersonaMutation({
+    onComplete: () => queryClient.invalidateQueries({ queryKey: ['persona', platform] }),
+  })
   const cancelSchedule = useCancelScheduleMutation()
   const ackSchedule = useAcknowledgeScheduleMutation()
   const runDue = useRunDueMutation()
+
+  const historyFiltered = historyRaw?.filter((i) => i.target_platform === platform)
+  const history = historyFiltered?.slice(0, 5)
+  const posted = postedRaw?.filter((i) => i.target_platform === platform)
+  const scheduled = scheduledRaw?.filter((i) => i.target_platform === platform)
 
   useEffect(() => {
     runDue.mutate()
@@ -71,7 +82,7 @@ export function Dashboard() {
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={FileText} label="My Posts" value={formatCount(posts?.length ?? 0)} />
         <StatCard icon={TrendingUp} label="Trending" value={formatCount(trending?.length ?? 0)} />
-        <StatCard icon={Sparkles} label="Generated" value={formatCount(history?.length ?? 0)} />
+        <StatCard icon={Sparkles} label="Generated" value={formatCount(historyFiltered?.length ?? 0)} />
         <StatCard icon={Send} label="Posted" value={formatCount(posted?.length ?? 0)} />
       </div>
 
@@ -159,25 +170,53 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Persona summary */}
-      {persona && (
-        <div className="mt-6">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-            Persona ({activePlatform})
+      {/* Persona */}
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+            Persona ({platform})
           </h3>
-          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <User size={16} className="text-[var(--color-accent)]" />
-              <span className="text-sm font-medium text-[var(--color-text)]">
-                Voice Profile
-              </span>
-            </div>
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              {persona.profile.voice_summary}
-            </p>
-          </div>
+          {!buildPersona.isRunning && (
+            <button
+              onClick={() => buildPersona.mutate({ platform })}
+              className="flex items-center gap-1.5 rounded-[var(--radius-button)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
+            >
+              <RefreshCw size={12} />
+              {persona ? 'Refresh' : 'Generate Persona'}
+            </button>
+          )}
         </div>
-      )}
+
+        <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+          {buildPersona.isRunning ? (
+            <div>
+              <p className="mb-2 text-sm text-[var(--color-text-secondary)]">
+                {buildPersona.progress?.message ?? 'Building persona…'}
+              </p>
+              <div className="h-1.5 w-full rounded-full bg-[var(--color-border)]">
+                <div
+                  className="h-1.5 rounded-full bg-[var(--color-accent)] transition-all"
+                  style={{ width: `${buildPersona.progress?.percentage ?? 0}%` }}
+                />
+              </div>
+            </div>
+          ) : buildPersona.error ? (
+            <p className="text-sm text-red-400">{buildPersona.error}</p>
+          ) : persona ? (
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <User size={16} className="text-[var(--color-accent)]" />
+                <span className="text-sm font-medium text-[var(--color-text)]">Voice Profile</span>
+              </div>
+              <p className="text-sm text-[var(--color-text-secondary)]">{persona.profile.voice_summary}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              No persona built yet. Click <strong>Generate Persona</strong> to analyse your posts.
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Quick actions */}
       <div className="mt-6">
@@ -186,21 +225,21 @@ export function Dashboard() {
         </h3>
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => navigate('/trending')}
+            onClick={() => navigate(`/${platform}/trending`)}
             className="flex items-center gap-2 rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
           >
             <TrendingUp size={16} />
             Discover Trending
           </button>
           <button
-            onClick={() => navigate('/generate')}
+            onClick={() => navigate(`/${platform}/generate`)}
             className="flex items-center gap-2 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
           >
             <Sparkles size={16} />
             Generate Content
           </button>
           <button
-            onClick={() => navigate('/publish')}
+            onClick={() => navigate(`/${platform}/publish`)}
             className="flex items-center gap-2 rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
           >
             <Send size={16} />

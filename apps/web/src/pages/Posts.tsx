@@ -1,15 +1,15 @@
-import { usePlatformStore } from '@/stores/platform-store'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePostsQuery, useFetchPostsMutation } from '@/hooks/usePosts'
 import { PostFilters } from '@/components/posts/PostFilters'
 import { PostList } from '@/components/posts/PostList'
 
 export function Posts() {
-  const { activePlatform } = usePlatformStore()
-  const { data: posts, isLoading } = usePostsQuery(activePlatform)
+  const platform = usePlatformParam()
+  const { data: posts, isLoading } = usePostsQuery(platform)
   const fetchMutation = useFetchPostsMutation()
 
   const handleFetch = () => {
-    fetchMutation.mutate({ platform: activePlatform })
+    fetchMutation.mutate({ platform: platform })
   }
 
   return (

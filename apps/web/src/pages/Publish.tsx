@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useHistoryQuery } from '@/hooks/useHistory'
 import { PublishPanel } from '@/components/publish/PublishPanel'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -7,8 +8,10 @@ import { Send } from 'lucide-react'
 
 export function Publish() {
   const [searchParams] = useSearchParams()
+  const platform = usePlatformParam()
   const preselectedId = searchParams.get('id') ? Number(searchParams.get('id')) : undefined
-  const { data: approved, isLoading } = useHistoryQuery('approved')
+  const { data: approvedRaw, isLoading } = useHistoryQuery('approved')
+  const approved = approvedRaw?.filter((i) => i.target_platform === platform)
 
   if (isLoading) return <LoadingSpinner />
 
