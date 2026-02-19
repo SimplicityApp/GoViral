@@ -1,5 +1,7 @@
 # Compiled binaries
-cli
+
+/cli
+/server
 goviral
 *.exe
 *.exe~
@@ -49,4 +51,3 @@ venv/
 # GoViral local data
 ~/.goviral/
 tmp/
-server
