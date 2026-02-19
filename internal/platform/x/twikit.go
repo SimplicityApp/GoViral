@@ -287,6 +287,35 @@ func (c *TwikitClient) ScheduleTweet(ctx context.Context, text string, scheduled
 	return resp.ScheduledTweetID, nil
 }
 
+// ScheduleQuoteTweet schedules a quote tweet for future posting via X's native scheduling.
+func (c *TwikitClient) ScheduleQuoteTweet(ctx context.Context, text string, quoteTweetID string, scheduledAtUnix int64) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
+		"schedule_quote_tweet", text, quoteTweetID, strconv.FormatInt(scheduledAtUnix, 10))
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", parseTwikitError(err, stdout.Bytes(), stderr.String(), "scheduling quote tweet")
+	}
+
+	var errResp twikitErrorResponse
+	if err := json.Unmarshal(stdout.Bytes(), &errResp); err == nil && errResp.Error != "" {
+		return "", fmt.Errorf("twikit: %s", errResp.Error)
+	}
+
+	var resp struct {
+		ScheduledTweetID string `json:"scheduled_tweet_id"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		return "", fmt.Errorf("parsing twikit schedule quote tweet response: %w", err)
+	}
+	if resp.ScheduledTweetID == "" {
+		return "", fmt.Errorf("twikit returned empty scheduled_tweet_id for quote tweet")
+	}
+	return resp.ScheduledTweetID, nil
+}
+
 // FetchTrendingPosts searches for trending/top tweets matching the given niches
 // via the twikit Python subprocess using cookie-based auth.
 func (c *TwikitClient) FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {

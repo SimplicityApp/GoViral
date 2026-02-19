@@ -16,6 +16,7 @@ var _ models.PlatformPoster = (*FallbackClient)(nil)
 var _ models.MediaPoster = (*FallbackClient)(nil)
 var _ models.PlatformScheduler = (*FallbackClient)(nil)
 var _ models.QuotePoster = (*FallbackClient)(nil)
+var _ models.QuoteScheduler = (*FallbackClient)(nil)
 
 // fetcher is an internal interface for testability, matching the PlatformClient methods.
 type fetcher interface {
@@ -300,6 +301,18 @@ func (fc *FallbackClient) ScheduleTweet(ctx context.Context, text string, schedu
 		return "", fmt.Errorf("twikit poster does not support scheduling")
 	}
 	return tc.ScheduleTweet(ctx, text, scheduledAtUnix)
+}
+
+// ScheduleQuoteTweet schedules a quote tweet via twikit (X API v2 doesn't support scheduled tweets).
+func (fc *FallbackClient) ScheduleQuoteTweet(ctx context.Context, text string, quoteTweetID string, scheduledAtUnix int64) (string, error) {
+	if fc.twikitPoster == nil {
+		return "", fmt.Errorf("scheduled quote tweets require twikit (cookie-based auth); twikit is unavailable")
+	}
+	tc, ok := fc.twikitPoster.(*TwikitClient)
+	if !ok {
+		return "", fmt.Errorf("twikit poster does not support scheduled quote tweets")
+	}
+	return tc.ScheduleQuoteTweet(ctx, text, quoteTweetID, scheduledAtUnix)
 }
 
 // checkDisablePrimary disables the primary client for subsequent calls if the

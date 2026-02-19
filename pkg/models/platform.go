@@ -34,6 +34,11 @@ type QuotePoster interface {
 	PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error)
 }
 
+// QuoteScheduler defines the interface for natively scheduling a quote tweet.
+type QuoteScheduler interface {
+	ScheduleQuoteTweet(ctx context.Context, text string, quoteTweetID string, scheduledAtUnix int64) (string, error)
+}
+
 // LinkedInPoster defines the interface for posting content to LinkedIn.
 type LinkedInPoster interface {
 	CreatePost(ctx context.Context, text string) (string, error)
