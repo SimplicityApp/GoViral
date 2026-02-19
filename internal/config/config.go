@@ -15,8 +15,29 @@ type Config struct {
 	Claude   ClaudeConfig   `yaml:"claude"`
 	Gemini   GeminiConfig   `yaml:"gemini"`
 	Server   ServerConfig   `yaml:"server"`
-	Niches   []string       `yaml:"niches"`
-	DBPath   string         `yaml:"db_path"`
+	Daemon   DaemonConfig   `yaml:"daemon"`
+	Telegram TelegramConfig `yaml:"telegram"`
+	Niches         []string `yaml:"niches"`
+	LinkedInNiches []string `yaml:"linkedin_niches"`
+	DBPath         string   `yaml:"db_path"`
+}
+
+// DaemonConfig contains autopilot daemon settings.
+type DaemonConfig struct {
+	Enabled       bool              `yaml:"enabled"`
+	Schedules     map[string]string `yaml:"schedules"`       // platform → cron expr
+	MaxPerBatch   int               `yaml:"max_per_batch"`
+	AutoSkipAfter string            `yaml:"auto_skip_after"` // duration string e.g. "2h"
+	TrendingLimit int               `yaml:"trending_limit"`
+	MinLikes      int               `yaml:"min_likes"`
+	Period        string            `yaml:"period"`
+}
+
+// TelegramConfig contains Telegram Bot API settings.
+type TelegramConfig struct {
+	BotToken   string `yaml:"bot_token"`
+	ChatID     int64  `yaml:"chat_id"`
+	WebhookURL string `yaml:"webhook_url"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -51,6 +72,7 @@ type LinkedInConfig struct {
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
 	AccessToken  string `yaml:"access_token"`
+	PersonURN    string `yaml:"person_urn,omitempty"` // LinkedIn member URN (e.g. urn:li:person:12345678)
 }
 
 // ClaudeConfig contains Anthropic Claude API settings.
@@ -108,6 +130,26 @@ func Load(path string) (*Config, error) {
 
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 8080
+	}
+
+	if cfg.Daemon.MaxPerBatch == 0 {
+		cfg.Daemon.MaxPerBatch = 3
+	}
+	if cfg.Daemon.AutoSkipAfter == "" {
+		cfg.Daemon.AutoSkipAfter = "2h"
+	}
+	if cfg.Daemon.TrendingLimit == 0 {
+		cfg.Daemon.TrendingLimit = 10
+	}
+	if cfg.Daemon.MinLikes == 0 {
+		cfg.Daemon.MinLikes = 10
+	}
+	if cfg.Daemon.Period == "" {
+		cfg.Daemon.Period = "week"
+	}
+
+	if len(cfg.LinkedInNiches) == 0 {
+		cfg.LinkedInNiches = []string{"AI", "Programming", "Technology"}
 	}
 
 	return &cfg, nil

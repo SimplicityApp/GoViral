@@ -119,6 +119,27 @@ func (db *DB) migrate() error {
 	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN is_repost INTEGER DEFAULT 0")
 	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN quote_tweet_id TEXT DEFAULT ''")
 
+	// Add daemon_batch_id to generated_content
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN daemon_batch_id INTEGER DEFAULT 0")
+
+	// Daemon batches table
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS daemon_batches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		platform TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		content_ids TEXT DEFAULT '[]',
+		trending_ids TEXT DEFAULT '[]',
+		telegram_message_id INTEGER DEFAULT 0,
+		approval_source TEXT DEFAULT '',
+		reply_text TEXT DEFAULT '',
+		parsed_intent TEXT DEFAULT '',
+		error_message TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		notified_at DATETIME,
+		resolved_at DATETIME
+	)`)
+
 	return nil
 }
 
