@@ -2,10 +2,12 @@ interface TrendingFiltersProps {
   period: string
   minLikes: string
   niche: string
+  niches: string[]
   onPeriodChange: (v: string) => void
   onMinLikesChange: (v: string) => void
   onNicheChange: (v: string) => void
   onDiscover: () => void
+  onManageNiches: () => void
   isDiscovering: boolean
 }
 
@@ -13,10 +15,12 @@ export function TrendingFilters({
   period,
   minLikes,
   niche,
+  niches,
   onPeriodChange,
   onMinLikesChange,
   onNicheChange,
   onDiscover,
+  onManageNiches,
   isDiscovering,
 }: TrendingFiltersProps) {
   return (
@@ -39,13 +43,18 @@ export function TrendingFilters({
         className="w-28 rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)]"
       />
 
-      <input
-        type="text"
-        placeholder="Niche"
+      <select
         value={niche}
         onChange={(e) => onNicheChange(e.target.value)}
-        className="w-32 rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)]"
-      />
+        className="rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)]"
+      >
+        <option value="">All niches</option>
+        {niches.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
 
       <button
         onClick={onDiscover}
@@ -53,6 +62,13 @@ export function TrendingFilters({
         className="rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
       >
         {isDiscovering ? 'Discovering...' : 'Discover'}
+      </button>
+
+      <button
+        onClick={onManageNiches}
+        className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
+      >
+        Manage Niches
       </button>
     </div>
   )

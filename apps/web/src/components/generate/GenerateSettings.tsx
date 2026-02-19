@@ -66,6 +66,11 @@ export function GenerateSettings({ config, onChange, isRepost }: GenerateSetting
           onChange={(e) => onChange({ ...config, max_chars: Number(e.target.value) })}
           className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)]"
         />
+        <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+          {config.target_platform === 'linkedin'
+            ? 'LinkedIn default: 2,000 characters'
+            : 'X default: 280 characters'}
+        </p>
       </div>
 
       <div>

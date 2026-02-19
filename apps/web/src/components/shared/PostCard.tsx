@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import type { Post, TrendingPost } from '@/lib/types'
 import { MetricsBadge } from './MetricsBadge'
 import { formatRelativeTime } from '@/lib/format'
-import { usePlatformStore } from '@/stores/platform-store'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { Repeat2 } from 'lucide-react'
 
 function isTrendingPost(post: Post | TrendingPost): post is TrendingPost {
@@ -17,12 +18,13 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, selectable, selected, onSelect, onRepost }: PostCardProps) {
-  const { activePlatform } = usePlatformStore()
+  const activePlatform = usePlatformParam()
   const isLinkedIn = activePlatform === 'linkedin'
-  const content =
-    post.content.length > 280
-      ? post.content.slice(0, 280) + '...'
-      : post.content
+  const [expanded, setExpanded] = useState(false)
+  const isTruncated = post.content.length > 280
+  const content = !expanded && isTruncated
+    ? post.content.slice(0, 280) + '...'
+    : post.content
 
   return (
     <div
@@ -46,6 +48,17 @@ export function PostCard({ post, selectable, selected, onSelect, onRepost }: Pos
 
       <p className="mb-3 whitespace-pre-wrap text-sm text-[var(--color-text)]">
         {content}
+        {isTruncated && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setExpanded(!expanded)
+            }}
+            className="ml-1 text-[var(--color-accent)] hover:underline"
+          >
+            {expanded ? 'less' : 'more'}
+          </button>
+        )}
       </p>
 
       <div className="flex items-center gap-4">

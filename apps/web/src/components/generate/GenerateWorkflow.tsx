@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { GeneratedContent } from '@/lib/types'
-import { usePlatformStore } from '@/stores/platform-store'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useTrendingQuery } from '@/hooks/useTrending'
 import { useGenerateMutation } from '@/hooks/useGenerate'
 import { useUpdateStatusMutation } from '@/hooks/useHistory'
@@ -13,16 +13,17 @@ import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
 const steps = ['Select Posts', 'Configure', 'Generating', 'Review']
 
 export function GenerateWorkflow() {
-  const { activePlatform } = usePlatformStore()
+  const activePlatform = usePlatformParam()
   const [searchParams, setSearchParams] = useSearchParams()
   const [step, setStep] = useState(0)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [results, setResults] = useState<GeneratedContent[]>([])
   const [isRepost, setIsRepost] = useState(false)
+  const platformDefaultChars = activePlatform === 'linkedin' ? 2000 : 280
   const [config, setConfig] = useState<GenerateConfig>({
     target_platform: activePlatform,
     count: 3,
-    max_chars: 280,
+    max_chars: platformDefaultChars,
     force_image: false,
   })
 

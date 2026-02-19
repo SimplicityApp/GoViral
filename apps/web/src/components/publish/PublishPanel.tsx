@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
-import { usePlatformStore } from '@/stores/platform-store'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePublishMutation, useScheduleMutation } from '@/hooks/usePublish'
 import { useUpdateContentMutation } from '@/hooks/useHistory'
 import { ThreadPreview } from './ThreadPreview'
@@ -14,13 +14,13 @@ interface PublishPanelProps {
 }
 
 export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
-  const { activePlatform } = usePlatformStore()
+  const activePlatform = usePlatformParam()
   const [selectedId, setSelectedId] = useState<number | null>(initialSelectedId ?? null)
   const [mode, setMode] = useState<'now' | 'schedule'>('now')
   const [scheduledAt, setScheduledAt] = useState('')
   const [editedContent, setEditedContent] = useState<string>('')
 
-  const publishMutation = usePublishMutation()
+  const publishMutation = usePublishMutation(activePlatform)
   const scheduleMutation = useScheduleMutation()
   const updateContentMutation = useUpdateContentMutation()
 
@@ -48,7 +48,7 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
     if (!selectedId) return
     if (mode === 'now') {
       publishMutation.mutate(
-        { content_id: selectedId, platform: activePlatform },
+        { content_id: selectedId },
         {
           onSuccess: () => toast.success('Published successfully'),
           onError: () => toast.error('Failed to publish'),
@@ -77,7 +77,7 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
           Select approved content
           {selected?.is_repost && (
             <span className="ml-2 rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-400">
-              Quote Tweet
+              {activePlatform === 'linkedin' ? 'Repost' : 'Quote Tweet'}
             </span>
           )}
         </label>
