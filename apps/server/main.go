@@ -1,0 +1,285 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/shuhao/goviral/apps/server/dto"
+	"github.com/shuhao/goviral/apps/server/handler"
+	"github.com/shuhao/goviral/apps/server/middleware"
+	"github.com/shuhao/goviral/apps/server/service"
+	"github.com/shuhao/goviral/internal/config"
+	"github.com/shuhao/goviral/internal/daemon"
+	"github.com/shuhao/goviral/internal/db"
+	"github.com/shuhao/goviral/internal/platform/linkedin"
+	"github.com/shuhao/goviral/internal/platform/x"
+	"github.com/shuhao/goviral/pkg/models"
+)
+
+func main() {
+	cfg, err := config.Load("")
+	if err != nil {
+		slog.Error("loading config", "error", err)
+		os.Exit(1)
+	}
+
+	database, err := db.New(cfg.DBPath)
+	if err != nil {
+		slog.Error("opening database", "error", err)
+		os.Exit(1)
+	}
+	defer database.Close()
+
+	srv := NewServer(cfg, database)
+
+	// Create daemon with adapter functions
+	generateSvc := service.NewGenerateService(database, cfg)
+	publishSvc := service.NewPublishService(database, cfg)
+
+	d := daemon.New(cfg, database,
+		makeDaemonGenerateFn(generateSvc),
+		makeDaemonPublishFn(publishSvc),
+		makeDaemonDiscoverFn(database, cfg),
+	)
+
+	setupRoutes(srv, d)
+
+	// Graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Start daemon if enabled
+	if cfg.Daemon.Enabled && cfg.Telegram.BotToken != "" {
+		if err := d.Start(ctx); err != nil {
+			slog.Error("starting daemon", "error", err)
+		}
+	}
+
+	go func() {
+		if err := srv.Start(); err != nil {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutdown signal received")
+
+	d.Stop()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown error", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("server stopped")
+}
+
+// setupRoutes configures all middleware and API route groups.
+func setupRoutes(s *Server, d *daemon.Daemon) {
+	s.Router.Use(
+		middleware.Recovery,
+		middleware.Logging,
+		middleware.CORS(s.Cfg.Server.AllowedOrigins),
+	)
+
+	// Services
+	postsSvc := service.NewPostsService(s.DB)
+	trendingSvc := service.NewTrendingService(s.DB)
+	personaSvc := service.NewPersonaService(s.DB)
+	scheduleSvc := service.NewScheduleService(s.DB)
+	publishSvc := service.NewPublishService(s.DB, s.Cfg)
+	generateSvc := service.NewGenerateService(s.DB, s.Cfg)
+	opStore := service.NewOperationStore(30 * time.Minute)
+
+	// Read handlers
+	healthH := handler.NewHealthHandler(s.Cfg)
+	postsH := handler.NewPostsHandler(postsSvc)
+	trendingH := handler.NewTrendingHandler(trendingSvc)
+	personaH := handler.NewPersonaHandler(personaSvc)
+	historyH := handler.NewHistoryHandler(s.DB)
+	scheduleH := handler.NewScheduleHandler(scheduleSvc, s.DB)
+	configH := handler.NewConfigHandler(s.Cfg)
+
+	// Write handlers
+	publishH := handler.NewPublishHandler(publishSvc)
+	scheduleWriteH := handler.NewScheduleWriteHandler(s.DB, publishSvc)
+	historyWriteH := handler.NewHistoryWriteHandler(s.DB)
+	configWriteH := handler.NewConfigWriteHandler(s.Cfg)
+
+	// Long-running operation handlers
+	operationsH := handler.NewOperationsHandler(opStore)
+	fetchPostsH := handler.NewFetchPostsHandler(s.DB, s.Cfg, opStore)
+	discoverH := handler.NewDiscoverTrendingHandler(s.DB, s.Cfg, opStore)
+	generateH := handler.NewGenerateHandler(generateSvc, opStore)
+	buildPersonaH := handler.NewBuildPersonaHandler(s.DB, s.Cfg, opStore)
+
+	// LinkedIn cookies handler
+	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg)
+
+	// Auth handler
+	authH := handler.NewAuthHandler(s.Cfg)
+
+	// Daemon handler
+	daemonH := handler.NewDaemonHandler(d, s.DB, s.Cfg)
+
+	// Telegram webhook (unauthenticated, validated by secret)
+	if s.Cfg.Telegram.BotToken != "" {
+		secret := handler.WebhookSecret(s.Cfg.Telegram.BotToken)
+		s.Router.Post("/api/v1/telegram/webhook/"+secret, daemonH.TelegramWebhook)
+	}
+
+	s.Router.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.Auth(s.Cfg.Server.APIKey))
+
+		// Read-only endpoints
+		r.Get("/health", healthH.Get)
+		r.Get("/posts", postsH.List)
+
+		r.Get("/trending", trendingH.List)
+		r.Get("/trending/{id}", trendingH.GetByID)
+
+		r.Get("/persona", personaH.Get)
+
+		r.Get("/history", historyH.List)
+		r.Get("/history/{id}", historyH.GetByID)
+
+		r.Get("/schedule", scheduleH.List)
+
+		r.Get("/config", configH.Get)
+
+		r.Get("/operations/{id}", operationsH.Get)
+
+		// Write endpoints
+		r.Post("/publish", publishH.Post)
+		r.Post("/x/publish", publishH.PostX)
+		r.Post("/linkedin/publish", publishH.PostLinkedIn)
+
+		r.Post("/schedule", scheduleWriteH.Create)
+		r.Patch("/schedule/{id}/ack", scheduleWriteH.Acknowledge)
+		r.Delete("/schedule/{id}", scheduleWriteH.Delete)
+		r.Post("/schedule/run", scheduleWriteH.RunDue)
+
+		r.Patch("/history/{id}", historyWriteH.UpdateStatus)
+		r.Delete("/history/{id}", historyWriteH.Delete)
+
+		r.Patch("/config", configWriteH.Update)
+
+		// Long-running operations (SSE or 202)
+		r.Post("/posts/fetch", fetchPostsH.Post)
+		r.Post("/trending/discover", discoverH.Post)
+		r.Post("/generate", generateH.Post)
+		r.Post("/persona/build", buildPersonaH.Post)
+
+		// LinkedIn cookie management
+		r.Post("/linkedin/extract-cookies", linkedinCookiesH.ExtractCookies)
+		r.Post("/linkedin/login-cookies", linkedinCookiesH.LoginCookies)
+		r.Get("/linkedin/cookies/status", linkedinCookiesH.Status)
+
+		// OAuth flow
+		r.Post("/auth/{platform}/start", authH.Start)
+		r.Get("/auth/{platform}/status", authH.Status)
+
+		// Daemon endpoints
+		r.Get("/daemon/status", daemonH.GetStatus)
+		r.Get("/daemon/batches", daemonH.ListBatches)
+		r.Get("/daemon/batches/{id}", daemonH.GetBatch)
+		r.Post("/daemon/batches/{id}/action", daemonH.BatchAction)
+		r.Post("/daemon/run", daemonH.RunNow)
+		r.Get("/daemon/config", daemonH.GetConfig)
+		r.Patch("/daemon/config", daemonH.UpdateConfig)
+		r.Post("/daemon/start", daemonH.StartDaemon)
+		r.Post("/daemon/stop", daemonH.StopDaemon)
+	})
+
+	// Static file serving (SPA fallback)
+	s.Router.Handle("/*", staticHandler())
+}
+
+// --- Daemon adapter functions ---
+
+func makeDaemonGenerateFn(svc *service.GenerateService) daemon.GenerateFunc {
+	return func(ctx context.Context, platform string, trendingIDs []int64, count int) ([]int64, error) {
+		progress := make(chan dto.ProgressEvent, 10)
+		go func() {
+			for range progress {
+			}
+		}()
+
+		contents, err := svc.Generate(ctx, dto.GenerateRequest{
+			TrendingPostIDs: trendingIDs,
+			TargetPlatform:  platform,
+			Count:           count,
+		}, progress)
+		if err != nil {
+			return nil, err
+		}
+
+		var ids []int64
+		for _, c := range contents {
+			ids = append(ids, c.ID)
+		}
+		return ids, nil
+	}
+}
+
+func makeDaemonPublishFn(svc *service.PublishService) daemon.PublishFunc {
+	return func(ctx context.Context, contentID int64) ([]string, error) {
+		postIDs, _, err := svc.Publish(ctx, contentID, false)
+		return postIDs, err
+	}
+}
+
+func makeDaemonDiscoverFn(database *db.DB, cfg *config.Config) daemon.DiscoverFunc {
+	return func(ctx context.Context, platform string, period string, minLikes, limit int) ([]int64, error) {
+		var niches []string
+		switch platform {
+		case "x":
+			niches = cfg.Niches
+		case "linkedin":
+			niches = cfg.LinkedInNiches
+			if len(niches) == 0 {
+				niches = []string{"AI", "Programming", "Technology"}
+			}
+		}
+		if len(niches) == 0 {
+			return nil, fmt.Errorf("no niches configured for %s", platform)
+		}
+
+		var posts []models.TrendingPost
+		var err error
+		switch platform {
+		case "x":
+			client := x.NewFallbackClient(cfg.X)
+			posts, err = client.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
+		case "linkedin":
+			client := linkedin.NewFallbackClient(cfg.LinkedIn, nil)
+			posts, err = client.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
+		default:
+			return nil, fmt.Errorf("unsupported platform: %s", platform)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("discovering trending on %s: %w", platform, err)
+		}
+
+		var ids []int64
+		for _, tp := range posts {
+			tp := tp
+			if err := database.UpsertTrendingPost(&tp); err != nil {
+				slog.Error("saving trending post", "platform", platform, "error", err)
+				continue
+			}
+			ids = append(ids, tp.ID)
+		}
+		return ids, nil
+	}
+}
