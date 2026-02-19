@@ -42,7 +42,8 @@ __pycache__/
 venv/
 
 # Claude / Cursor local state
-.claude/
+.claude/*
+!.claude/skills/
 .cursor/
 
 # GoViral local data
