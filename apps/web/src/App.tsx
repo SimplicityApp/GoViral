@@ -1,8 +1,7 @@
-import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { TopBar } from '@/components/layout/TopBar'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ApiKeyGate } from '@/components/auth/ApiKeyGate'
+import { RootLayout } from '@/components/layout/RootLayout'
+import { PlatformLayout } from '@/components/layout/PlatformLayout'
 import { defaultPlatform } from '@/lib/platforms'
 import { Dashboard } from '@/pages/Dashboard'
 import { Posts } from '@/pages/Posts'
@@ -11,32 +10,28 @@ import { Generate } from '@/pages/Generate'
 import { History } from '@/pages/History'
 import { Publish } from '@/pages/Publish'
 import { Settings } from '@/pages/Settings'
+import { Autopilot } from '@/pages/Autopilot'
 
 function App() {
-  useEffect(() => {
-    document.documentElement.dataset.platform = defaultPlatform
-  }, [])
-
   return (
     <BrowserRouter>
       <ApiKeyGate>
-        <div className="flex h-screen">
-          <Sidebar />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <TopBar />
-            <main className="flex-1 overflow-y-auto">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/posts" element={<Posts />} />
-                <Route path="/trending" element={<Trending />} />
-                <Route path="/generate" element={<Generate />} />
-                <Route path="/history" element={<History />} />
-                <Route path="/publish" element={<Publish />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </main>
-          </div>
-        </div>
+        <Routes>
+          <Route path="/" element={<Navigate to={`/${defaultPlatform}/dashboard`} replace />} />
+          <Route element={<RootLayout />}>
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/:platform" element={<PlatformLayout />}>
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="posts" element={<Posts />} />
+              <Route path="trending" element={<Trending />} />
+              <Route path="generate" element={<Generate />} />
+              <Route path="history" element={<History />} />
+              <Route path="publish" element={<Publish />} />
+              <Route path="autopilot" element={<Autopilot />} />
+            </Route>
+          </Route>
+        </Routes>
       </ApiKeyGate>
     </BrowserRouter>
   )

@@ -8,22 +8,25 @@ import {
   Send,
   Settings,
   X,
+  Bot,
 } from 'lucide-react'
 import { PlatformSwitcher } from './PlatformSwitcher'
 import { useUIStore } from '@/stores/ui-store'
+import { usePlatformStore } from '@/stores/platform-store'
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/posts', label: 'My Posts', icon: FileText },
-  { to: '/trending', label: 'Trending', icon: TrendingUp },
-  { to: '/generate', label: 'Generate', icon: Sparkles },
-  { to: '/history', label: 'History', icon: Clock },
-  { to: '/publish', label: 'Publish', icon: Send },
-  { to: '/settings', label: 'Settings', icon: Settings },
+const platformNavItems = [
+  { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: 'posts', label: 'My Posts', icon: FileText },
+  { path: 'trending', label: 'Trending', icon: TrendingUp },
+  { path: 'generate', label: 'Generate', icon: Sparkles },
+  { path: 'history', label: 'History', icon: Clock },
+  { path: 'publish', label: 'Publish', icon: Send },
+  { path: 'autopilot', label: 'Autopilot', icon: Bot },
 ]
 
 export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useUIStore()
+  const activePlatform = usePlatformStore((s) => s.activePlatform)
 
   return (
     <>
@@ -53,11 +56,10 @@ export function Sidebar() {
         <PlatformSwitcher />
 
         <nav className="flex-1 overflow-y-auto px-2 py-4">
-          {navItems.map((item) => (
+          {platformNavItems.map((item) => (
             <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
+              key={item.path}
+              to={`/${activePlatform}/${item.path}`}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -71,6 +73,20 @@ export function Sidebar() {
               {item.label}
             </NavLink>
           ))}
+          <NavLink
+            to="/settings"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-card)] hover:text-[var(--color-text)]'
+              }`
+            }
+          >
+            <Settings size={18} />
+            Settings
+          </NavLink>
         </nav>
       </aside>
     </>
