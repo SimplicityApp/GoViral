@@ -2,11 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import type { ScheduledPost } from '@/lib/types'
 
-export function usePublishMutation() {
+interface PublishResponse {
+  post_ids: string[]
+  thread_parts?: string[]
+}
+
+export function usePublishMutation(platform: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { content_id: number; platform: string }) =>
-      apiClient.post<{ post_id: string }>('/publish', body),
+    mutationFn: (body: { content_id: number; numbered?: boolean }) => {
+      const path = platform === 'linkedin' ? '/linkedin/publish' : '/x/publish'
+      return apiClient.post<PublishResponse>(path, body)
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['history'] })
     },

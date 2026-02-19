@@ -9,7 +9,11 @@ interface SSEState<T> {
   error: string | null
 }
 
-export function useSSEMutation<T>(path: string) {
+interface SSEMutationOptions {
+  onComplete?: () => void
+}
+
+export function useSSEMutation<T>(path: string, options?: SSEMutationOptions) {
   const [state, setState] = useState<SSEState<T>>({
     progress: null,
     isRunning: false,
@@ -17,6 +21,8 @@ export function useSSEMutation<T>(path: string) {
     error: null,
   })
   const cancelRef = useRef<(() => void) | null>(null)
+  const onCompleteRef = useRef(options?.onComplete)
+  onCompleteRef.current = options?.onComplete
 
   const mutate = useCallback(
     (body: unknown) => {
@@ -32,6 +38,7 @@ export function useSSEMutation<T>(path: string) {
             result: event.data as T,
             error: null,
           })
+          onCompleteRef.current?.()
         } else if (event.type === 'error') {
           setState((prev) => ({
             ...prev,

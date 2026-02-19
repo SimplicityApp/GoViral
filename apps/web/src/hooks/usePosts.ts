@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { useSSEMutation } from './useSSE'
 import type { Post } from '@/lib/types'
@@ -11,5 +11,10 @@ export function usePostsQuery(platform?: string) {
 }
 
 export function useFetchPostsMutation() {
-  return useSSEMutation<Post[]>('/posts/fetch')
+  const queryClient = useQueryClient()
+  return useSSEMutation<Post[]>('/posts/fetch', {
+    onComplete: () => {
+      void queryClient.invalidateQueries({ queryKey: ['posts'] })
+    },
+  })
 }

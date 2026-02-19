@@ -10,6 +10,6 @@ export function usePersonaQuery(platform?: string) {
   })
 }
 
-export function useBuildPersonaMutation() {
-  return useSSEMutation<Persona>('/persona/build')
+export function useBuildPersonaMutation(options?: { onComplete?: () => void }) {
+  return useSSEMutation<Persona>('/persona/build', options)
 }
