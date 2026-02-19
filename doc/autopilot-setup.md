@@ -23,11 +23,21 @@ Batches that go unanswered are automatically archived after a configurable timeo
 2. Send `/newbot` and follow the prompts to name your bot.
 3. BotFather gives you a **bot token** like `123456789:ABCdefGHI...`. Copy it.
 4. Start a conversation with your new bot (search for it by username and press **Start**).
-5. To find your **chat ID**, send any message to your bot, then open:
-   ```
-   https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
-   ```
-   Look for `"chat":{"id":123456789}` in the response. That number is your chat ID.
+5. To find your **chat ID**, use one of these methods:
+
+   **Easiest — @userinfobot:**
+   - Search for `@userinfobot` on Telegram and send it any message.
+   - It replies instantly with your user ID. That number is your chat ID.
+
+   **Using getUpdates:**
+   - Make sure the GoViral server is **not running** (it consumes updates via long-polling).
+   - Send a message to your bot.
+   - Immediately open in your browser:
+     ```
+     https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+     ```
+   - Look for `"chat":{"id":123456789}` in the response.
+   - If the result is `[]`, either the server already consumed the update or a webhook is registered. Send another message and try again, or use @userinfobot instead.
 
 ## 2. Add Config
 
