@@ -1,20 +1,37 @@
 import type { GeneratedContent } from '@/lib/types'
 import { StatusBadge } from './StatusBadge'
 import { formatRelativeTime } from '@/lib/format'
-import { Check, Pencil, Send, Trash2 } from 'lucide-react'
+import { Check, CheckSquare, Pencil, Send, Square, Trash2 } from 'lucide-react'
 
 interface ContentCardProps {
   content: GeneratedContent
   onStatusChange?: (status: 'draft' | 'approved' | 'posted') => void
   onEdit?: () => void
   onDelete?: () => void
+  isSelected?: boolean
+  onToggleSelect?: () => void
 }
 
-export function ContentCard({ content, onStatusChange, onEdit, onDelete }: ContentCardProps) {
+export function ContentCard({ content, onStatusChange, onEdit, onDelete, isSelected, onToggleSelect }: ContentCardProps) {
+  const selectionMode = onToggleSelect !== undefined
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+    <div
+      onClick={selectionMode ? onToggleSelect : undefined}
+      className={`rounded-[var(--radius-card)] border bg-[var(--color-card)] p-4 transition-colors ${
+        selectionMode ? 'cursor-pointer' : ''
+      } ${
+        isSelected
+          ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]'
+          : 'border-[var(--color-border)]'
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
+          {selectionMode && (
+            isSelected
+              ? <CheckSquare size={16} className="shrink-0 text-[var(--color-accent)]" />
+              : <Square size={16} className="shrink-0 text-[var(--color-text-secondary)]" />
+          )}
           <StatusBadge status={content.status} />
           {content.is_repost && (
             <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-400">
@@ -32,7 +49,7 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete }: Conte
       </p>
 
       <div className="flex items-center gap-2">
-        {content.status === 'draft' && onStatusChange && (
+        {!selectionMode && content.status === 'draft' && onStatusChange && (
           <button
             onClick={() => onStatusChange('approved')}
             className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
@@ -41,7 +58,7 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete }: Conte
             Approve
           </button>
         )}
-        {onEdit && content.status !== 'posted' && (
+        {!selectionMode && onEdit && content.status !== 'posted' && (
           <button
             onClick={onEdit}
             className="flex items-center gap-1.5 rounded-[var(--radius-button)] border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
@@ -50,7 +67,7 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete }: Conte
             Edit
           </button>
         )}
-        {content.status === 'approved' && onStatusChange && (
+        {!selectionMode && content.status === 'approved' && onStatusChange && (
           <button
             onClick={() => onStatusChange('posted')}
             className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
@@ -59,7 +76,7 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete }: Conte
             Publish
           </button>
         )}
-        {onDelete && (
+        {!selectionMode && onDelete && (
           <>
             <div className="ml-auto" />
             <button

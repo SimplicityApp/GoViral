@@ -9,9 +9,20 @@ interface HistoryListProps {
   isLoading: boolean
   onStatusChange: (id: number, status: 'draft' | 'approved' | 'posted') => void
   onDelete: (id: number) => void
+  selectionMode?: boolean
+  selectedIds?: Set<number>
+  onToggleSelect?: (id: number) => void
 }
 
-export function HistoryList({ items, isLoading, onStatusChange, onDelete }: HistoryListProps) {
+export function HistoryList({
+  items,
+  isLoading,
+  onStatusChange,
+  onDelete,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
+}: HistoryListProps) {
   if (isLoading) return <LoadingSpinner />
 
   if (!items?.length) {
@@ -30,8 +41,10 @@ export function HistoryList({ items, isLoading, onStatusChange, onDelete }: Hist
         <ContentCard
           key={item.id}
           content={item}
-          onStatusChange={(status) => onStatusChange(item.id, status)}
-          onDelete={() => onDelete(item.id)}
+          onStatusChange={selectionMode ? undefined : (status) => onStatusChange(item.id, status)}
+          onDelete={selectionMode ? undefined : () => onDelete(item.id)}
+          isSelected={selectedIds?.has(item.id)}
+          onToggleSelect={selectionMode ? () => onToggleSelect?.(item.id) : undefined}
         />
       ))}
     </div>
