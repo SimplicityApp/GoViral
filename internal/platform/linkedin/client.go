@@ -43,7 +43,7 @@ type Client struct {
 func NewClient(cfg config.LinkedInConfig, influencerURNs []string) *Client {
 	return &Client{
 		accessToken:    cfg.AccessToken,
-		authorID:       cfg.ClientID,
+		authorID:       cfg.PersonURN,
 		influencerURNs: influencerURNs,
 		httpClient:     &http.Client{Timeout: 30 * time.Second},
 		windowStarted:  time.Now(),
@@ -52,6 +52,9 @@ func NewClient(cfg config.LinkedInConfig, influencerURNs []string) *Client {
 
 // FetchMyPosts retrieves the authenticated user's UGC posts from LinkedIn.
 func (c *Client) FetchMyPosts(ctx context.Context, limit int) ([]models.Post, error) {
+	if c.authorID == "" {
+		return nil, fmt.Errorf("no access token: person URN not configured")
+	}
 	authorURN := fmt.Sprintf("urn:li:person:%s", c.authorID)
 	endpoint := fmt.Sprintf("%s/ugcPosts", baseURL)
 	params := url.Values{}

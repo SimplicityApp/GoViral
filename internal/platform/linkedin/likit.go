@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shuhao/goviral/internal/config"
@@ -100,36 +101,52 @@ func (c *LikitClient) FetchTrendingPosts(ctx context.Context, niches []string, p
 	now := time.Now()
 
 	for _, niche := range niches {
-		posts, err := c.fetchTrendingForNiche(ctx, niche, period, limit)
+		trendingPosts, err := c.fetchTrendingForNiche(ctx, niche, period, limit)
 		if err != nil {
 			// Trending failed, fall back to search_posts.
-			posts, err = c.searchPostsForNiche(ctx, niche, limit)
-			if err != nil {
+			rawPosts, searchErr := c.searchPostsForNiche(ctx, niche, limit)
+			if searchErr != nil {
 				continue
 			}
+			for _, p := range rawPosts {
+				if seen[p.PlatformPostID] || p.Likes < minLikes {
+					continue
+				}
+				seen[p.PlatformPostID] = true
+				allPosts = append(allPosts, models.TrendingPost{
+					Platform:       "linkedin",
+					PlatformPostID: p.PlatformPostID,
+					Content:        p.Content,
+					Likes:          p.Likes,
+					Reposts:        p.Reposts,
+					Comments:       p.Comments,
+					Impressions:    p.Impressions,
+					NicheTags:      []string{niche},
+					PostedAt:       p.PostedAt,
+					FetchedAt:      now,
+				})
+			}
+			continue
 		}
 
-		for _, p := range posts {
-			if seen[p.PlatformPostID] {
-				continue
-			}
-			if p.Likes < minLikes {
+		for _, p := range trendingPosts {
+			if seen[p.PlatformPostID] || p.Likes < minLikes {
 				continue
 			}
 			seen[p.PlatformPostID] = true
+			allPosts = append(allPosts, p)
+		}
+	}
 
-			allPosts = append(allPosts, models.TrendingPost{
-				Platform:       "linkedin",
-				PlatformPostID: p.PlatformPostID,
-				Content:        p.Content,
-				Likes:          p.Likes,
-				Reposts:        p.Reposts,
-				Comments:       p.Comments,
-				Impressions:    p.Impressions,
-				NicheTags:      []string{niche},
-				PostedAt:       p.PostedAt,
-				FetchedAt:      now,
-			})
+	// Merge home feed posts (from followed people).
+	feedPosts, err := c.fetchFeedPosts(ctx, limit*2)
+	if err == nil {
+		for _, p := range feedPosts {
+			if seen[p.PlatformPostID] || p.Likes < minLikes {
+				continue
+			}
+			seen[p.PlatformPostID] = true
+			allPosts = append(allPosts, p)
 		}
 	}
 
@@ -140,14 +157,18 @@ func (c *LikitClient) FetchTrendingPosts(ctx context.Context, niches []string, p
 }
 
 // fetchTrendingForNiche tries the dedicated get_trending_posts action for a single niche.
-func (c *LikitClient) fetchTrendingForNiche(ctx context.Context, niche string, period string, limit int) ([]models.Post, error) {
+func (c *LikitClient) fetchTrendingForNiche(ctx context.Context, niche string, period string, limit int) ([]models.TrendingPost, error) {
+	candidateLimit := limit * 3
+	if candidateLimit < 60 {
+		candidateLimit = 60
+	}
 	result, err := c.runCommand(ctx, likitCommand{
 		Action:       "get_trending_posts",
 		Topic:        niche,
-		Period:       period,
-		Limit:        limit,
+		Period:       mapPeriodToLikit(period),
+		Limit:        candidateLimit,
 		FromFollowed: true,
-		Scrolls:      3,
+		Scrolls:      7,
 	})
 	if err != nil {
 		return nil, err
@@ -155,7 +176,22 @@ func (c *LikitClient) fetchTrendingForNiche(ctx context.Context, niche string, p
 	if errMsg := result["error"]; errMsg != nil {
 		return nil, fmt.Errorf("%s", errMsg)
 	}
-	return parseLikitPosts(result)
+	return parseLikitTrendingPosts(result, niche, time.Now())
+}
+
+// fetchFeedPosts fetches the authenticated user's home feed (posts from followed people).
+func (c *LikitClient) fetchFeedPosts(ctx context.Context, limit int) ([]models.TrendingPost, error) {
+	result, err := c.runCommand(ctx, likitCommand{
+		Action: "get_feed",
+		Limit:  limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+	return parseLikitTrendingPosts(result, "feed", time.Now())
 }
 
 // searchPostsForNiche falls back to search_posts for a single niche.
@@ -233,6 +269,27 @@ func (c *LikitClient) UploadImage(ctx context.Context, imageData []byte, filenam
 	return mediaURN, nil
 }
 
+// Repost reshares an existing LinkedIn post, optionally with commentary text.
+func (c *LikitClient) Repost(ctx context.Context, postURN string, text string) (string, error) {
+	postURN = resolveLinkedInShareURN(postURN)
+	result, err := c.runCommand(ctx, likitCommand{
+		Action:  "repost",
+		PostURN: postURN,
+		Text:    text,
+	})
+	if err != nil {
+		return "", fmt.Errorf("reposting LinkedIn post: %w", err)
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return "", fmt.Errorf("reposting LinkedIn post: %s", errMsg)
+	}
+	urn, ok := result["urn"].(string)
+	if !ok || urn == "" {
+		return "", fmt.Errorf("likit returned empty URN for repost")
+	}
+	return urn, nil
+}
+
 // CreatePostWithImage creates a post with an attached image.
 func (c *LikitClient) CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error) {
 	encoded := base64.StdEncoding.EncodeToString(imageData)
@@ -254,6 +311,63 @@ func (c *LikitClient) CreatePostWithImage(ctx context.Context, text string, imag
 		return "", fmt.Errorf("likit returned empty URN for created post with image")
 	}
 	return urn, nil
+}
+
+// CreateScheduledPost schedules a LinkedIn post for future publishing.
+// Returns the post URN if available, or an empty string if the post was scheduled but URN is unavailable.
+func (c *LikitClient) CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error) {
+	result, err := c.runCommand(ctx, likitCommand{
+		Action:      "create_scheduled_post",
+		Text:        text,
+		ScheduledAt: scheduledAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return "", fmt.Errorf("scheduling LinkedIn post: %w", err)
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return "", fmt.Errorf("scheduling LinkedIn post: %s", errMsg)
+	}
+
+	// Extract URN if available; success doesn't require a URN to be present
+	// as long as there's no error (likit accepted the scheduling request)
+	urn, ok := result["urn"].(string)
+	if ok && urn != "" {
+		return urn, nil
+	}
+
+	// If likit completed without error but no URN, still consider it success
+	// LinkedIn has accepted the scheduled post
+	return "scheduled", nil
+}
+
+// CreateScheduledPostWithImage schedules a LinkedIn post with an image for future publishing.
+// Returns the post URN if available, or a placeholder string if the post was scheduled but URN is unavailable.
+func (c *LikitClient) CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error) {
+	encoded := base64.StdEncoding.EncodeToString(imageData)
+	result, err := c.runCommand(ctx, likitCommand{
+		Action:      "create_scheduled_post_with_image",
+		Text:        text,
+		ImageData:   encoded,
+		Filename:    filename,
+		ScheduledAt: scheduledAt.Format(time.RFC3339),
+	})
+	if err != nil {
+		return "", fmt.Errorf("scheduling LinkedIn post with image: %w", err)
+	}
+	if errMsg := result["error"]; errMsg != nil {
+		return "", fmt.Errorf("scheduling LinkedIn post with image: %s", errMsg)
+	}
+
+	// Extract URN if available; success doesn't require a URN to be present
+	// as long as there's no error (likit accepted the scheduling request)
+	urn, ok := result["urn"].(string)
+	if ok && urn != "" {
+		return urn, nil
+	}
+
+	// If likit completed without error but no URN, still consider it success
+	// LinkedIn has accepted the scheduled post with image
+	return "scheduled", nil
 }
 
 // runCommand executes a single command against the likit bridge script.
@@ -305,6 +419,8 @@ type likitCommand struct {
 	Visibility   string `json:"visibility,omitempty"`
 	ImageData    string `json:"image_data,omitempty"`
 	Filename     string `json:"filename,omitempty"`
+	PostURN      string `json:"post_urn,omitempty"`
+	ScheduledAt  string `json:"scheduled_at,omitempty"`
 	Limit        int    `json:"limit,omitempty"`
 	Topic        string `json:"topic,omitempty"`
 	Period       string `json:"period,omitempty"`
@@ -312,9 +428,36 @@ type likitCommand struct {
 	Scrolls      int    `json:"scrolls,omitempty"`
 }
 
+// resolveLinkedInShareURN converts LinkedIn fsd_update composite URNs (returned by the
+// Voyager feed API) to the share URNs that likit's repost() requires.
+//
+// Feed posts arrive as:
+//
+//	urn:li:fsd_update:(urn:li:activity:ID,MAIN_FEED,...)
+//
+// Likit expects:
+//
+//	urn:li:share:ID
+//
+// Activity IDs and share IDs use the same numeric value for original posts, so
+// the conversion is safe for typical feed content.
+func resolveLinkedInShareURN(urn string) string {
+	if !strings.HasPrefix(urn, "urn:li:fsd_update:") {
+		return urn
+	}
+	// Strip leading "urn:li:fsd_update:(" and take the first comma-separated token.
+	inner := strings.TrimPrefix(urn, "urn:li:fsd_update:(")
+	if idx := strings.IndexByte(inner, ','); idx >= 0 {
+		inner = inner[:idx]
+	}
+	// Convert activity URN → share URN.
+	return strings.Replace(inner, "urn:li:activity:", "urn:li:share:", 1)
+}
+
 // likitPostJSON represents a post in the likit bridge JSON response.
 type likitPostJSON struct {
 	URN        string `json:"urn"`
+	ShareURN   string `json:"share_urn"`
 	Text       string `json:"text"`
 	Likes      int    `json:"likes"`
 	Comments   int    `json:"comments"`
@@ -356,14 +499,93 @@ func parseLikitPosts(result map[string]interface{}) ([]models.Post, error) {
 			}
 		}
 
+		// Prefer share_urn as the post identifier: it's required by likit's
+		// repost() API. Fall back to the activity/fsd_update URN if absent.
+		postID := lp.URN
+		if lp.ShareURN != "" {
+			postID = lp.ShareURN
+		}
+
 		posts = append(posts, models.Post{
 			Platform:       "linkedin",
-			PlatformPostID: lp.URN,
+			PlatformPostID: postID,
 			Content:        lp.Text,
 			Likes:          lp.Likes,
 			Reposts:        lp.Reposts,
 			Comments:       lp.Comments,
 			Impressions:    lp.Impressions,
+			PostedAt:       postedAt,
+			FetchedAt:      now,
+		})
+	}
+
+	return posts, nil
+}
+
+// mapPeriodToLikit converts GoViral period names to likit's required format.
+func mapPeriodToLikit(period string) string {
+	switch period {
+	case "24h", "day":
+		return "past-24h"
+	case "7d", "week":
+		return "past-week"
+	case "30d", "month":
+		return "past-month"
+	default:
+		return "past-week"
+	}
+}
+
+// parseLikitTrendingPosts parses the posts array from a likit bridge response into TrendingPost values,
+// populating AuthorName, AuthorUsername, and NicheTags.
+func parseLikitTrendingPosts(result map[string]interface{}, niche string, now time.Time) ([]models.TrendingPost, error) {
+	postsRaw, ok := result["posts"]
+	if !ok {
+		return nil, fmt.Errorf("likit response missing 'posts' field")
+	}
+
+	postsJSON, err := json.Marshal(postsRaw)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshaling likit posts: %w", err)
+	}
+
+	var likitPosts []likitPostJSON
+	if err := json.Unmarshal(postsJSON, &likitPosts); err != nil {
+		return nil, fmt.Errorf("parsing likit posts: %w", err)
+	}
+
+	posts := make([]models.TrendingPost, 0, len(likitPosts))
+	for _, lp := range likitPosts {
+		var postedAt time.Time
+		if lp.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339, lp.CreatedAt); err == nil {
+				postedAt = t
+			}
+		}
+
+		var authorName, authorUsername string
+		if lp.Author != nil {
+			authorName = lp.Author.FirstName + " " + lp.Author.LastName
+			authorUsername = lp.Author.URN
+		}
+
+		// Prefer share_urn as the post identifier for the same reason as parseLikitPosts.
+		postID := lp.URN
+		if lp.ShareURN != "" {
+			postID = lp.ShareURN
+		}
+
+		posts = append(posts, models.TrendingPost{
+			Platform:       "linkedin",
+			PlatformPostID: postID,
+			Content:        lp.Text,
+			Likes:          lp.Likes,
+			Reposts:        lp.Reposts,
+			Comments:       lp.Comments,
+			Impressions:    lp.Impressions,
+			AuthorName:     authorName,
+			AuthorUsername: authorUsername,
+			NicheTags:      []string{niche},
 			PostedAt:       postedAt,
 			FetchedAt:      now,
 		})

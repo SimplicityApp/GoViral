@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/pkg/models"
@@ -13,6 +14,7 @@ import (
 // Compile-time interface compliance checks.
 var _ models.PlatformClient = (*FallbackClient)(nil)
 var _ models.LinkedInPoster = (*FallbackClient)(nil)
+var _ models.LinkedInReposter = (*FallbackClient)(nil)
 
 // linkedinFetcher is an internal interface for testability.
 type linkedinFetcher interface {
@@ -25,6 +27,9 @@ type linkedinPoster interface {
 	CreatePost(ctx context.Context, text string) (string, error)
 	UploadImage(ctx context.Context, imageData []byte, filename string) (string, error)
 	CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error)
+	Repost(ctx context.Context, postURN string, text string) (string, error)
+	CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error)
+	CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error)
 }
 
 // FallbackClient wraps the official LinkedIn API client with a likit fallback.
@@ -43,7 +48,8 @@ func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *Fall
 	primary := NewClient(cfg, influencerURNs)
 
 	fc := &FallbackClient{
-		primary: primary,
+		primary:         primary,
+		primaryDisabled: cfg.AccessToken == "" || cfg.PersonURN == "",
 	}
 
 	lc, err := NewLikitClient()
@@ -134,6 +140,30 @@ func (fc *FallbackClient) CreatePostWithImage(ctx context.Context, text string, 
 		return "", fmt.Errorf("LinkedIn posting requires likit (cookie-based auth); likit is unavailable")
 	}
 	return fc.likitPoster.CreatePostWithImage(ctx, text, imageData, filename)
+}
+
+// Repost reshares an existing LinkedIn post via likit (official API has no repost support).
+func (fc *FallbackClient) Repost(ctx context.Context, postURN string, text string) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn repost requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.Repost(ctx, postURN, text)
+}
+
+// CreateScheduledPost schedules a LinkedIn post via likit (official API has no scheduling support).
+func (fc *FallbackClient) CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn scheduling requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.CreateScheduledPost(ctx, text, scheduledAt)
+}
+
+// CreateScheduledPostWithImage schedules a LinkedIn post with an image via likit (official API has no scheduling support).
+func (fc *FallbackClient) CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error) {
+	if fc.likitPoster == nil {
+		return "", fmt.Errorf("LinkedIn scheduling requires likit (cookie-based auth); likit is unavailable")
+	}
+	return fc.likitPoster.CreateScheduledPostWithImage(ctx, text, imageData, filename, scheduledAt)
 }
 
 // checkDisablePrimary disables the primary client for subsequent calls if the

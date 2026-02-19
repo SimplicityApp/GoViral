@@ -1,6 +1,9 @@
 package models
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PlatformClient defines the interface for interacting with social media platforms.
 type PlatformClient interface {
@@ -36,4 +39,11 @@ type LinkedInPoster interface {
 	CreatePost(ctx context.Context, text string) (string, error)
 	UploadImage(ctx context.Context, imageData []byte, filename string) (string, error)
 	CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error)
+	CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error)
+	CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error)
+}
+
+// LinkedInReposter defines the interface for reposting LinkedIn content.
+type LinkedInReposter interface {
+	Repost(ctx context.Context, postURN string, text string) (string, error)
 }
