@@ -153,6 +153,16 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
         <ScheduleCalendar scheduledAt={scheduledAt} onChange={setScheduledAt} />
       )}
 
+      {mode === 'schedule' && selected?.is_repost && activePlatform === 'linkedin' && (
+        <div className="flex items-start gap-2 rounded-[var(--radius-card)] border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5 text-sm text-yellow-400">
+          <span className="mt-0.5 shrink-0">⚠</span>
+          <span>
+            LinkedIn does not support native scheduled reposts. This will be queued and
+            posted at the scheduled time by GoViral's scheduler.
+          </span>
+        </div>
+      )}
+
       {/* Action button */}
       <button
         onClick={handlePublish}
