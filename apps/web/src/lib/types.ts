@@ -93,3 +93,50 @@ export interface ProgressEvent {
   percentage: number
   data?: unknown
 }
+
+export interface DaemonBatch {
+  id: number
+  platform: string
+  status: 'pending' | 'notified' | 'awaiting_reply' | 'approved' | 'rejected' | 'posted' | 'scheduled' | 'archived' | 'failed'
+  content_ids: number[]
+  trending_ids: number[]
+  telegram_message_id: number
+  approval_source: string
+  reply_text: string
+  error_message: string
+  created_at: string
+  updated_at: string
+  notified_at: string | null
+  resolved_at: string | null
+  contents?: GeneratedContent[]
+}
+
+export interface DaemonStatus {
+  running: boolean
+  platforms: Record<string, PlatformDaemonStatus>
+}
+
+export interface PlatformDaemonStatus {
+  schedule: string
+  next_run: string | null
+  last_run: string | null
+  last_batch_id: number | null
+}
+
+export interface DaemonConfig {
+  daemon: {
+    enabled: boolean
+    schedules: Record<string, string>
+    max_per_batch: number
+    auto_skip_after: string
+    trending_limit: number
+    min_likes: number
+    period: string
+  }
+  telegram: {
+    bot_token: string
+    chat_id: number
+    webhook_url: string
+    connected: boolean
+  }
+}
