@@ -272,9 +272,10 @@ func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
 	ON CONFLICT(platform_post_id) DO UPDATE SET
 		content=excluded.content, likes=excluded.likes, reposts=excluded.reposts,
 		comments=excluded.comments, impressions=excluded.impressions, niche_tags=excluded.niche_tags, media_json=excluded.media_json, fetched_at=excluded.fetched_at
+	RETURNING id
 	`
-	_, err = db.conn.Exec(query, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now())
-	if err != nil {
+	row := db.conn.QueryRow(query, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now())
+	if err := row.Scan(&tp.ID); err != nil {
 		return fmt.Errorf("upserting trending post: %w", err)
 	}
 	return nil

@@ -149,6 +149,29 @@ func (db *DB) GetLatestDaemonBatch(platform string) (*models.DaemonBatch, error)
 	return &b, nil
 }
 
+// GetLatestActiveDaemonBatch returns the most recent unresolved batch across all platforms.
+// "Active" means status is pending, notified, or awaiting_reply.
+func (db *DB) GetLatestActiveDaemonBatch() (*models.DaemonBatch, error) {
+	var b models.DaemonBatch
+	err := db.conn.QueryRow(
+		`SELECT id, platform, status, content_ids, trending_ids, telegram_message_id,
+		        approval_source, reply_text, parsed_intent, error_message,
+		        created_at, updated_at, notified_at, resolved_at
+		 FROM daemon_batches
+		 WHERE status IN ('pending', 'notified', 'awaiting_reply')
+		 ORDER BY created_at DESC LIMIT 1`,
+	).Scan(&b.ID, &b.Platform, &b.Status, &b.ContentIDs, &b.TrendingIDs,
+		&b.TelegramMessageID, &b.ApprovalSource, &b.ReplyText, &b.ParsedIntent,
+		&b.ErrorMessage, &b.CreatedAt, &b.UpdatedAt, &b.NotifiedAt, &b.ResolvedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("getting latest active daemon batch: %w", err)
+	}
+	return &b, nil
+}
+
 // GetGeneratedContentByBatchID returns generated content linked to a daemon batch.
 func (db *DB) GetGeneratedContentByBatchID(batchID int64) ([]models.GeneratedContent, error) {
 	rows, err := db.conn.Query(
