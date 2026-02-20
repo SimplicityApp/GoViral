@@ -11,11 +11,13 @@ import (
 
 // mockMessageSender implements claude.MessageSender for testing.
 type mockMessageSender struct {
-	response string
-	err      error
+	response   string
+	err        error
+	lastSystem string
 }
 
 func (m *mockMessageSender) SendMessage(ctx context.Context, systemPrompt string, userMessage string) (string, error) {
+	m.lastSystem = systemPrompt
 	return m.response, m.err
 }
 
@@ -58,7 +60,7 @@ func TestBuildProfile_Success(t *testing.T) {
 	mock := &mockMessageSender{response: personaJSON}
 	analyzer := NewAnalyzer(mock)
 
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts())
+	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
 	if err != nil {
 		t.Fatalf("BuildProfile() error = %v", err)
 	}
@@ -73,6 +75,43 @@ func TestBuildProfile_Success(t *testing.T) {
 	}
 	if profile.VoiceSummary != "A thoughtful tech leader." {
 		t.Errorf("VoiceSummary = %q, want 'A thoughtful tech leader.'", profile.VoiceSummary)
+	}
+}
+
+func TestBuildProfile_PlatformSpecificPrompt(t *testing.T) {
+	personaJSON := `{
+		"writing_tone": "casual",
+		"typical_length": "short",
+		"common_themes": ["tech"],
+		"vocabulary_level": "simple",
+		"engagement_patterns": "asks questions",
+		"structural_patterns": ["single posts"],
+		"emoji_usage": "heavy",
+		"hashtag_usage": "none",
+		"call_to_action_style": "direct",
+		"unique_quirks": ["uses slang"],
+		"voice_summary": "Casual tech voice."
+	}`
+
+	mock := &mockMessageSender{response: personaJSON}
+	analyzer := NewAnalyzer(mock)
+
+	// X platform should use X-specific prompt
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
+	if err != nil {
+		t.Fatalf("BuildProfile(x) error = %v", err)
+	}
+	if !strings.Contains(mock.lastSystem, "X") && !strings.Contains(mock.lastSystem, "Twitter") {
+		t.Error("X platform should use X-specific persona prompt")
+	}
+
+	// LinkedIn platform should use LinkedIn-specific prompt
+	_, err = analyzer.BuildProfile(context.Background(), samplePosts(), "linkedin")
+	if err != nil {
+		t.Fatalf("BuildProfile(linkedin) error = %v", err)
+	}
+	if !strings.Contains(mock.lastSystem, "LinkedIn") {
+		t.Error("LinkedIn platform should use LinkedIn-specific persona prompt")
 	}
 }
 
@@ -94,7 +133,7 @@ func TestBuildProfile_MarkdownWrappedJSON(t *testing.T) {
 	mock := &mockMessageSender{response: personaJSON}
 	analyzer := NewAnalyzer(mock)
 
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts())
+	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
 	if err != nil {
 		t.Fatalf("BuildProfile() error = %v", err)
 	}
@@ -121,7 +160,7 @@ func TestBuildProfile_MarkdownWrappedGenericCodeBlock(t *testing.T) {
 	mock := &mockMessageSender{response: personaJSON}
 	analyzer := NewAnalyzer(mock)
 
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts())
+	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
 	if err != nil {
 		t.Fatalf("BuildProfile() error = %v", err)
 	}
@@ -134,7 +173,7 @@ func TestBuildProfile_EmptyPosts(t *testing.T) {
 	mock := &mockMessageSender{response: "{}"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), nil)
+	_, err := analyzer.BuildProfile(context.Background(), nil, "x")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for empty posts, got nil")
 	}
@@ -147,7 +186,7 @@ func TestBuildProfile_EmptyPostSlice(t *testing.T) {
 	mock := &mockMessageSender{response: "{}"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), []models.Post{})
+	_, err := analyzer.BuildProfile(context.Background(), []models.Post{}, "x")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for empty post slice, got nil")
 	}
@@ -157,7 +196,7 @@ func TestBuildProfile_InvalidJSON(t *testing.T) {
 	mock := &mockMessageSender{response: "this is not valid json at all"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), samplePosts())
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for invalid JSON response, got nil")
 	}
@@ -167,7 +206,7 @@ func TestBuildProfile_ClientError(t *testing.T) {
 	mock := &mockMessageSender{err: errors.New("API error")}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), samplePosts())
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error when client fails, got nil")
 	}

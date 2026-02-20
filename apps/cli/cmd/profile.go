@@ -74,13 +74,14 @@ func runProfileBuild(cmd *cobra.Command, args []string) error {
 	analyzer := persona.NewAnalyzer(claudeClient)
 
 	ctx := context.Background()
-	profile, err := analyzer.BuildProfile(ctx, posts)
-	if err != nil {
-		return fmt.Errorf("building persona profile: %w", err)
-	}
 
 	// Determine platform — use "all" if we have posts from multiple platforms
 	platform := determinePlatform(posts)
+
+	profile, err := analyzer.BuildProfile(ctx, posts, platform)
+	if err != nil {
+		return fmt.Errorf("building persona profile: %w", err)
+	}
 
 	p := &models.Persona{
 		Platform: platform,

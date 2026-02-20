@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/shuhao/goviral/apps/server/dto"
 	"github.com/shuhao/goviral/internal/ai/claude"
@@ -85,7 +86,6 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 			Niches:         s.cfg.Niches,
 			Count:          count,
 			MaxChars:       maxChars,
-			ForceImage:     req.ForceImage,
 			IsRepost:       req.IsRepost,
 		})
 		if err != nil {
@@ -100,13 +100,49 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 				GeneratedContent: r.Content,
 				PersonaID:        persona.ID,
 				Status:           "draft",
-				ImagePrompt:      r.ImagePrompt,
 				IsRepost:         req.IsRepost,
 			}
 			if req.IsRepost {
-				gc.PromptUsed = "repost-commentary"
+				gc.PromptUsed = fmt.Sprintf("repost-%s", targetPlatform)
 				gc.QuoteTweetID = tp.PlatformPostID
+			} else {
+				gc.PromptUsed = fmt.Sprintf("rewrite-%s", targetPlatform)
 			}
+
+			// Image pipeline: decide whether to include an image
+			var imagePrompt string
+			if req.ForceImage {
+				// Skip decision, always generate image prompt
+				progress <- dto.ProgressEvent{
+					Type:    "progress",
+					Message: "Generating image prompt (forced)...",
+				}
+				imgPrompt, err := gen.GenerateImagePrompt(ctx, r.Content, targetPlatform)
+				if err != nil {
+					slog.Error("generating image prompt", "error", err)
+				} else {
+					imagePrompt = imgPrompt
+				}
+			} else {
+				// Ask Claude whether an image is appropriate
+				decision, err := gen.DecideImage(ctx, r.Content, targetPlatform)
+				if err != nil {
+					slog.Error("deciding image", "error", err)
+				} else if decision.SuggestImage {
+					progress <- dto.ProgressEvent{
+						Type:    "progress",
+						Message: "Generating image prompt...",
+					}
+					imgPrompt, err := gen.GenerateImagePrompt(ctx, r.Content, targetPlatform)
+					if err != nil {
+						slog.Error("generating image prompt", "error", err)
+					} else {
+						imagePrompt = imgPrompt
+					}
+				}
+			}
+			gc.ImagePrompt = imagePrompt
+
 			id, err := s.db.InsertGeneratedContent(&gc)
 			if err != nil {
 				return nil, fmt.Errorf("saving generated content: %w", err)

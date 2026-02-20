@@ -129,49 +129,71 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		for i, r := range results {
 			displayGeneratedContent(i+1, &r)
 
+			// Separate image flow
 			var imagePath string
-			if r.SuggestImage && r.ImagePrompt != "" {
-				displayImageSuggestion(&r)
+			var imagePrompt string
 
-				shouldGenerate := generateImages
-				if !shouldGenerate {
-					fmt.Print("Generate image for this post? (y/N) ")
+			if generateImages {
+				// --images flag: skip decision, always generate image prompt
+				imgPrompt, err := gen.GenerateImagePrompt(ctx, r.Content, generatePlatform)
+				if err != nil {
+					fmt.Printf("  Warning: image prompt generation failed: %v\n", err)
+				} else {
+					imagePrompt = imgPrompt
+				}
+			} else {
+				// Ask Claude if an image would help
+				decision, err := gen.DecideImage(ctx, r.Content, generatePlatform)
+				if err != nil {
+					// Silently skip image decision on error
+				} else if decision.SuggestImage {
+					displayImageSuggestion(decision.Reasoning)
+
+					fmt.Print("Generate image? (y/N) ")
 					reader := bufio.NewReader(os.Stdin)
 					line, _ := reader.ReadString('\n')
-					shouldGenerate = strings.TrimSpace(strings.ToLower(line)) == "y"
-				}
-
-				if shouldGenerate {
-					if cfg.Gemini.APIKey != "" {
-						imgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-						fmt.Println(imgStyle.Render("Generating image via Gemini..."))
-
-						geminiClient := gemini.NewClient(cfg.Gemini.APIKey, cfg.Gemini.Model)
-						img, err := geminiClient.GenerateImage(ctx, r.ImagePrompt)
+					if strings.TrimSpace(strings.ToLower(line)) == "y" {
+						imgPrompt, err := gen.GenerateImagePrompt(ctx, r.Content, generatePlatform)
 						if err != nil {
-							fmt.Printf("  Warning: image generation failed: %v\n", err)
+							fmt.Printf("  Warning: image prompt generation failed: %v\n", err)
 						} else {
-							name := fmt.Sprintf("gen_%d_%d_%d", tp.ID, i+1, time.Now().Unix())
-							path, err := gemini.SaveImage(img, name)
-							if err != nil {
-								fmt.Printf("  Warning: failed to save image: %v\n", err)
-							} else {
-								imagePath = path
-								successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-								fmt.Println(successStyle.Render(fmt.Sprintf("Image saved: %s", path)))
-							}
+							imagePrompt = imgPrompt
 						}
-					} else {
-						hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-						fmt.Println(hintStyle.Render("Add gemini.api_key to ~/.goviral/config.yaml to enable image generation"))
 					}
 				}
 			}
 
+			// Generate actual image if we have a prompt
+			if imagePrompt != "" {
+				if cfg.Gemini.APIKey != "" {
+					imgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+					fmt.Println(imgStyle.Render("Generating image via Gemini..."))
+
+					geminiClient := gemini.NewClient(cfg.Gemini.APIKey, cfg.Gemini.Model)
+					img, err := geminiClient.GenerateImage(ctx, imagePrompt)
+					if err != nil {
+						fmt.Printf("  Warning: image generation failed: %v\n", err)
+					} else {
+						name := fmt.Sprintf("gen_%d_%d_%d", tp.ID, i+1, time.Now().Unix())
+						path, err := gemini.SaveImage(img, name)
+						if err != nil {
+							fmt.Printf("  Warning: failed to save image: %v\n", err)
+						} else {
+							imagePath = path
+							successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+							fmt.Println(successStyle.Render(fmt.Sprintf("Image saved: %s", path)))
+						}
+					}
+				} else {
+					hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+					fmt.Println(hintStyle.Render("Add gemini.api_key to ~/.goviral/config.yaml to enable image generation"))
+				}
+			}
+
 			// Store in database
-			promptUsed := "viral-rewrite"
+			promptUsed := fmt.Sprintf("rewrite-%s", generatePlatform)
 			if generateRepost {
-				promptUsed = "repost-commentary"
+				promptUsed = fmt.Sprintf("repost-%s", generatePlatform)
 			}
 			gc := &models.GeneratedContent{
 				SourceTrendingID: tp.ID,
@@ -181,7 +203,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 				PersonaID:        personaModel.ID,
 				PromptUsed:       promptUsed,
 				Status:           "draft",
-				ImagePrompt:      r.ImagePrompt,
+				ImagePrompt:      imagePrompt,
 				ImagePath:        imagePath,
 				IsRepost:         generateRepost,
 			}
@@ -237,7 +259,7 @@ func interactiveSelect(trending []models.TrendingPost) ([]models.TrendingPost, e
 	return selected, nil
 }
 
-func displayImageSuggestion(r *models.GenerateResult) {
+func displayImageSuggestion(reasoning string) {
 	cardStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("14")).
@@ -246,8 +268,8 @@ func displayImageSuggestion(r *models.GenerateResult) {
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 
-	header := headerStyle.Render("Image Suggestion")
-	body := fmt.Sprintf("%s\n%s", header, r.ImagePrompt)
+	header := headerStyle.Render("Image Suggested")
+	body := fmt.Sprintf("%s\n%s", header, reasoning)
 	fmt.Println(cardStyle.Render(body))
 }
 

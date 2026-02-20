@@ -7,23 +7,9 @@ import (
 	"strings"
 
 	"github.com/shuhao/goviral/internal/ai/claude"
+	"github.com/shuhao/goviral/internal/ai/prompts"
 	"github.com/shuhao/goviral/pkg/models"
 )
-
-const systemPrompt = `You are a social media style analyst. Analyze the following posts from a user and produce a detailed persona profile in JSON format. Include:
-- writing_tone: (e.g., casual, professional, witty, provocative)
-- typical_length: average post length range
-- common_themes: recurring topics (as array of strings)
-- vocabulary_level: (simple, moderate, advanced, technical)
-- engagement_patterns: what types of posts get the most engagement
-- structural_patterns: (uses threads, single posts, questions, lists, stories)
-- emoji_usage: frequency and types
-- hashtag_usage: frequency and common ones
-- call_to_action_style: how they engage audience
-- unique_quirks: any distinctive writing habits (as array of strings)
-- voice_summary: a 2-3 sentence summary of their voice
-
-Respond ONLY with valid JSON, no markdown formatting or code blocks.`
 
 // Analyzer implements models.PersonaAnalyzer using a Claude MessageSender.
 type Analyzer struct {
@@ -36,12 +22,13 @@ func NewAnalyzer(client claude.MessageSender) *Analyzer {
 }
 
 // BuildProfile analyzes posts and builds a PersonaProfile.
-func (a *Analyzer) BuildProfile(ctx context.Context, posts []models.Post) (*models.PersonaProfile, error) {
+func (a *Analyzer) BuildProfile(ctx context.Context, posts []models.Post, platform string) (*models.PersonaProfile, error) {
 	if len(posts) == 0 {
 		return nil, fmt.Errorf("building persona profile: no posts provided")
 	}
 
 	userMessage := formatPosts(posts)
+	systemPrompt := prompts.PersonaPrompt(prompts.Platform(platform))
 
 	response, err := a.client.SendMessage(ctx, systemPrompt, userMessage)
 	if err != nil {

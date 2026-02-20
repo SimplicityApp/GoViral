@@ -111,7 +111,7 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, platform string, prog
 	client := claude.NewClient(h.cfg.Claude.APIKey, h.cfg.Claude.Model)
 	analyzer := persona.NewAnalyzer(client)
 
-	profile, err := analyzer.BuildProfile(ctx, posts)
+	profile, err := analyzer.BuildProfile(ctx, posts, platform)
 	if err != nil {
 		slog.Error("building persona", "error", err)
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("building persona: %v", err)}

@@ -7,30 +7,9 @@ import (
 	"strings"
 
 	"github.com/shuhao/goviral/internal/ai/claude"
+	"github.com/shuhao/goviral/internal/ai/prompts"
 	"github.com/shuhao/goviral/pkg/models"
 )
-
-const systemPromptBase = `You are a viral content ghostwriter. Your job is to take a trending post and rewrite it to match a specific person's voice and style while keeping the viral potential.
-
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
-- "content": the rewritten post (ready to copy-paste)
-- "viral_mechanic": brief note on what viral mechanic you preserved
-- "confidence_score": number 1-10 on viral potential
-- "suggest_image": boolean — true if an accompanying image would significantly boost engagement for this post
-- "image_prompt": if suggest_image is true, provide a detailed image generation prompt describing the ideal image to pair with this post. The prompt should describe composition, style, colors, and subject matter. If suggest_image is false, leave this as an empty string.`
-
-const systemPromptRepost = `You are a quote tweet specialist. Your job is to write short, punchy commentary for a quote tweet (repost) of a trending post. The commentary should match the person's voice and add value — a hot take, amplification, personal anecdote, or contrarian view.
-
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
-- "content": the quote tweet commentary (1-3 sentences, ideally under 200 characters)
-- "viral_mechanic": brief note on what angle you took (hot take, amplification, anecdote, contrarian, etc.)
-- "confidence_score": number 1-10 on viral potential
-- "suggest_image": boolean — usually false for quote tweets since the original post is embedded visually
-- "image_prompt": if suggest_image is true, provide a detailed image generation prompt. If false, leave as empty string.`
-
-const forceImageSuffix = `
-
-IMPORTANT: For every variation, you MUST set "suggest_image" to true and provide a detailed "image_prompt". Every post should have an accompanying image.`
 
 // Generator implements models.ContentGenerator using a Claude MessageSender.
 type Generator struct {
@@ -49,13 +28,8 @@ func (g *Generator) Generate(ctx context.Context, req models.GenerateRequest) ([
 		return nil, fmt.Errorf("generating content: %w", err)
 	}
 
-	prompt := systemPromptBase
-	if req.IsRepost {
-		prompt = systemPromptRepost
-	}
-	if req.ForceImage {
-		prompt += forceImageSuffix
-	}
+	platform := prompts.Platform(req.TargetPlatform)
+	prompt := prompts.GeneratePrompt(platform, req.IsRepost)
 
 	response, err := g.client.SendMessage(ctx, prompt, userMessage)
 	if err != nil {
@@ -68,6 +42,124 @@ func (g *Generator) Generate(ctx context.Context, req models.GenerateRequest) ([
 	}
 
 	return results, nil
+}
+
+// ClassifyPost classifies a single trending post as rewrite or repost.
+func (g *Generator) ClassifyPost(ctx context.Context, post models.TrendingPost) (*models.ClassifyResult, error) {
+	userMessage := formatPostForClassification(post)
+
+	response, err := g.client.SendMessage(ctx, prompts.ClassifyPrompt(), userMessage)
+	if err != nil {
+		return nil, fmt.Errorf("classifying post: %w", err)
+	}
+
+	cleaned := stripMarkdownJSON(response)
+	var result models.ClassifyResult
+	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+		return nil, fmt.Errorf("parsing classification result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ClassifyPosts classifies multiple trending posts in a single batch call.
+// On parse failure, falls back to individual ClassifyPost calls.
+func (g *Generator) ClassifyPosts(ctx context.Context, posts []models.TrendingPost) ([]models.ClassifyResult, error) {
+	if len(posts) == 0 {
+		return nil, nil
+	}
+	if len(posts) == 1 {
+		r, err := g.ClassifyPost(ctx, posts[0])
+		if err != nil {
+			return nil, err
+		}
+		return []models.ClassifyResult{*r}, nil
+	}
+
+	userMessage := formatPostsForClassification(posts)
+
+	response, err := g.client.SendMessage(ctx, prompts.ClassifyPrompt(), userMessage)
+	if err != nil {
+		return nil, fmt.Errorf("batch classifying posts: %w", err)
+	}
+
+	cleaned := stripMarkdownJSON(response)
+	var results []models.ClassifyResult
+	if err := json.Unmarshal([]byte(cleaned), &results); err != nil {
+		// Fallback: classify individually
+		results = make([]models.ClassifyResult, 0, len(posts))
+		for _, post := range posts {
+			r, err := g.ClassifyPost(ctx, post)
+			if err != nil {
+				return nil, fmt.Errorf("fallback classifying post %s: %w", post.PlatformPostID, err)
+			}
+			results = append(results, *r)
+		}
+	}
+
+	return results, nil
+}
+
+// DecideImage decides whether an image should accompany the given content.
+func (g *Generator) DecideImage(ctx context.Context, content string, platform string) (*models.ImageDecision, error) {
+	prompt := prompts.ImageDecisionPrompt(prompts.Platform(platform))
+	userMessage := fmt.Sprintf("Content to evaluate:\n%s", content)
+
+	response, err := g.client.SendMessage(ctx, prompt, userMessage)
+	if err != nil {
+		return nil, fmt.Errorf("deciding image: %w", err)
+	}
+
+	cleaned := stripMarkdownJSON(response)
+	var decision models.ImageDecision
+	if err := json.Unmarshal([]byte(cleaned), &decision); err != nil {
+		return nil, fmt.Errorf("parsing image decision: %w", err)
+	}
+
+	return &decision, nil
+}
+
+// GenerateImagePrompt generates a Gemini-optimized image prompt for the given content.
+func (g *Generator) GenerateImagePrompt(ctx context.Context, content string, platform string) (string, error) {
+	prompt := prompts.ImageGenerationPrompt(prompts.Platform(platform))
+	userMessage := fmt.Sprintf("Content to create an image for:\n%s", content)
+
+	response, err := g.client.SendMessage(ctx, prompt, userMessage)
+	if err != nil {
+		return "", fmt.Errorf("generating image prompt: %w", err)
+	}
+
+	cleaned := stripMarkdownJSON(response)
+	var result struct {
+		ImagePrompt string `json:"image_prompt"`
+	}
+	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+		return "", fmt.Errorf("parsing image prompt result: %w", err)
+	}
+
+	return result.ImagePrompt, nil
+}
+
+func formatPostForClassification(post models.TrendingPost) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Author: %s (@%s)\n", post.AuthorName, post.AuthorUsername)
+	fmt.Fprintf(&b, "Platform: %s\n", post.Platform)
+	fmt.Fprintf(&b, "Engagement: Likes %d, Reposts %d, Comments %d\n", post.Likes, post.Reposts, post.Comments)
+	fmt.Fprintf(&b, "Content:\n%s\n", post.Content)
+	return b.String()
+}
+
+func formatPostsForClassification(posts []models.TrendingPost) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Classify the following %d posts:\n\n", len(posts))
+	for i, post := range posts {
+		fmt.Fprintf(&b, "--- Post %d ---\n", i+1)
+		fmt.Fprintf(&b, "Author: %s (@%s)\n", post.AuthorName, post.AuthorUsername)
+		fmt.Fprintf(&b, "Platform: %s\n", post.Platform)
+		fmt.Fprintf(&b, "Engagement: Likes %d, Reposts %d, Comments %d\n", post.Likes, post.Reposts, post.Comments)
+		fmt.Fprintf(&b, "Content:\n%s\n\n", post.Content)
+	}
+	return b.String()
 }
 
 func buildUserMessage(req models.GenerateRequest) (string, error) {
@@ -128,8 +220,6 @@ type rawResult struct {
 	Content         string `json:"content"`
 	ViralMechanic   string `json:"viral_mechanic"`
 	ConfidenceScore int    `json:"confidence_score"`
-	SuggestImage    bool   `json:"suggest_image"`
-	ImagePrompt     string `json:"image_prompt"`
 }
 
 func parseResults(response string) ([]models.GenerateResult, error) {
@@ -146,8 +236,6 @@ func parseResults(response string) ([]models.GenerateResult, error) {
 			Content:         r.Content,
 			ViralMechanic:   r.ViralMechanic,
 			ConfidenceScore: r.ConfidenceScore,
-			SuggestImage:    r.SuggestImage,
-			ImagePrompt:     r.ImagePrompt,
 		}
 	}
 

@@ -133,9 +133,12 @@ func TestGenerate_PromptConstruction(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
-	// Verify system prompt is the generator's system prompt
+	// Verify system prompt is not empty and contains platform-specific content
 	if mock.lastSystem == "" {
 		t.Error("system prompt should not be empty")
+	}
+	if !strings.Contains(mock.lastSystem, "X") && !strings.Contains(mock.lastSystem, "Twitter") {
+		t.Error("system prompt should reference X/Twitter for x platform")
 	}
 
 	// Verify user message contains expected elements
@@ -159,6 +162,33 @@ func TestGenerate_PromptConstruction(t *testing.T) {
 	}
 }
 
+func TestGenerate_PlatformSpecificPrompts(t *testing.T) {
+	mock := &mockMessageSender{response: `[{"content":"x","viral_mechanic":"y","confidence_score":5}]`}
+	gen := NewGenerator(mock)
+
+	// Test LinkedIn rewrite
+	req := sampleRequest()
+	req.TargetPlatform = "linkedin"
+	_, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate(linkedin) error = %v", err)
+	}
+	if !strings.Contains(mock.lastSystem, "LinkedIn") {
+		t.Error("system prompt should reference LinkedIn for linkedin platform")
+	}
+
+	// Test X repost
+	req.TargetPlatform = "x"
+	req.IsRepost = true
+	_, err = gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate(x repost) error = %v", err)
+	}
+	if !strings.Contains(mock.lastSystem, "quote tweet") {
+		t.Error("repost system prompt should reference quote tweets")
+	}
+}
+
 func TestGenerate_InvalidJSON(t *testing.T) {
 	mock := &mockMessageSender{response: "this is not valid json"}
 	gen := NewGenerator(mock)
@@ -179,6 +209,86 @@ func TestGenerate_ClientError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "API connection error") {
 		t.Errorf("expected error to contain 'API connection error', got: %v", err)
+	}
+}
+
+func TestClassifyPost_Success(t *testing.T) {
+	mock := &mockMessageSender{response: `{"decision": "rewrite", "reasoning": "Generic advice", "confidence": 8}`}
+	gen := NewGenerator(mock)
+
+	post := models.TrendingPost{
+		AuthorUsername: "user1",
+		AuthorName:     "User One",
+		Platform:       "x",
+		Content:        "Work hard, dream big.",
+		Likes:          1000,
+	}
+
+	result, err := gen.ClassifyPost(context.Background(), post)
+	if err != nil {
+		t.Fatalf("ClassifyPost() error = %v", err)
+	}
+	if result.Decision != "rewrite" {
+		t.Errorf("Decision = %q, want 'rewrite'", result.Decision)
+	}
+	if result.Confidence != 8 {
+		t.Errorf("Confidence = %d, want 8", result.Confidence)
+	}
+}
+
+func TestClassifyPosts_Batch(t *testing.T) {
+	mock := &mockMessageSender{response: `[
+		{"decision": "rewrite", "reasoning": "Generic take", "confidence": 9},
+		{"decision": "repost", "reasoning": "Personal achievement", "confidence": 7}
+	]`}
+	gen := NewGenerator(mock)
+
+	posts := []models.TrendingPost{
+		{AuthorUsername: "u1", AuthorName: "U1", Platform: "x", Content: "AI is cool"},
+		{AuthorUsername: "u2", AuthorName: "U2", Platform: "x", Content: "I just got promoted!"},
+	}
+
+	results, err := gen.ClassifyPosts(context.Background(), posts)
+	if err != nil {
+		t.Fatalf("ClassifyPosts() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("ClassifyPosts() returned %d results, want 2", len(results))
+	}
+	if results[0].Decision != "rewrite" {
+		t.Errorf("results[0].Decision = %q, want 'rewrite'", results[0].Decision)
+	}
+	if results[1].Decision != "repost" {
+		t.Errorf("results[1].Decision = %q, want 'repost'", results[1].Decision)
+	}
+}
+
+func TestDecideImage_Success(t *testing.T) {
+	mock := &mockMessageSender{response: `{"suggest_image": true, "reasoning": "Visual would enhance this tweet"}`}
+	gen := NewGenerator(mock)
+
+	decision, err := gen.DecideImage(context.Background(), "Check out this data", "x")
+	if err != nil {
+		t.Fatalf("DecideImage() error = %v", err)
+	}
+	if !decision.SuggestImage {
+		t.Error("expected SuggestImage = true")
+	}
+	if decision.Reasoning == "" {
+		t.Error("expected non-empty reasoning")
+	}
+}
+
+func TestGenerateImagePrompt_Success(t *testing.T) {
+	mock := &mockMessageSender{response: `{"image_prompt": "A futuristic cityscape with AI nodes"}`}
+	gen := NewGenerator(mock)
+
+	prompt, err := gen.GenerateImagePrompt(context.Background(), "The future of AI", "x")
+	if err != nil {
+		t.Fatalf("GenerateImagePrompt() error = %v", err)
+	}
+	if prompt != "A futuristic cityscape with AI nodes" {
+		t.Errorf("unexpected image prompt: %q", prompt)
 	}
 }
 
