@@ -122,12 +122,14 @@ def search_trending(niches_json, min_likes, limit, period="day"):
 
         seen = set()
         all_tweets = []
+        niche_errors = 0
 
         for niche in niches:
             query = f"{niche} min_faves:{min_likes} lang:en -filter:retweets since:{since_date} until:{until_date}"
             try:
                 tweets = await client.search_tweet(query, "Top", count=20)
             except Exception as e:
+                niche_errors += 1
                 print(f"search for niche '{niche}' failed: {e}", file=sys.stderr)
                 continue
 
@@ -175,7 +177,16 @@ def search_trending(niches_json, min_likes, limit, period="day"):
         if len(all_tweets) > limit:
             all_tweets = all_tweets[:limit]
 
+        # Always save cookies — this refreshes the ct0 CSRF token even on auth failure.
         client.save_cookies(COOKIES_PATH)
+
+        # If every niche failed, raise so Go knows to retry (cookies just refreshed above).
+        if not all_tweets and niche_errors == len(niches) and niche_errors > 0:
+            raise Exception(
+                f"all {niche_errors} niche searches failed (session error) — "
+                "cookies refreshed, retry should work"
+            )
+
         return all_tweets
 
     tweets = asyncio.run(_search())

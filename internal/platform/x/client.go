@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -280,6 +281,7 @@ func (c *Client) FetchMyPosts(ctx context.Context, limit int) ([]models.Post, er
 func (c *Client) FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {
 	seen := make(map[string]bool)
 	var allPosts []models.TrendingPost
+	var lastErr error
 
 	for _, niche := range niches {
 		query := fmt.Sprintf("\"%s\" min_faves:%d lang:en -is:retweet", niche, minLikes)
@@ -305,12 +307,16 @@ func (c *Client) FetchTrendingPosts(ctx context.Context, niches []string, period
 
 		body, err := c.doGetWithRetry(ctx, endpoint, params)
 		if err != nil {
-			return nil, fmt.Errorf("searching trending posts for niche %q: %w", niche, err)
+			slog.Warn("skipping niche due to API error", "niche", niche, "error", err)
+			lastErr = err
+			continue
 		}
 
 		var resp searchResponse
 		if err := json.Unmarshal(body, &resp); err != nil {
-			return nil, fmt.Errorf("parsing search response for niche %q: %w", niche, err)
+			slog.Warn("skipping niche due to parse error", "niche", niche, "error", err)
+			lastErr = err
+			continue
 		}
 
 		userMap := make(map[string]userObject)
@@ -369,6 +375,11 @@ func (c *Client) FetchTrendingPosts(ctx context.Context, niches []string, period
 
 	if limit > 0 && len(allPosts) > limit {
 		allPosts = allPosts[:limit]
+	}
+	// If every niche failed and we have nothing to show, propagate the last
+	// error so the FallbackClient knows to try twikit.
+	if len(allPosts) == 0 && lastErr != nil {
+		return nil, lastErr
 	}
 	return allPosts, nil
 }

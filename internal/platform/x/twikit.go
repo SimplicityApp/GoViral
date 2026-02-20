@@ -6,10 +6,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shuhao/goviral/internal/config"
@@ -316,9 +318,20 @@ func (c *TwikitClient) ScheduleQuoteTweet(ctx context.Context, text string, quot
 	return resp.ScheduledTweetID, nil
 }
 
-// FetchTrendingPosts searches for trending/top tweets matching the given niches
-// via the twikit Python subprocess using cookie-based auth.
+// FetchTrendingPosts searches for trending/top tweets matching the given niches.
+// On first daemon run the twikit session may need a ct0 refresh — in that case
+// the first call raises a "cookies refreshed" error and we retry once.
 func (c *TwikitClient) FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {
+	posts, err := c.runSearchTrending(ctx, niches, period, minLikes, limit)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on first call, retrying", "original_error", err)
+		posts, err = c.runSearchTrending(ctx, niches, period, minLikes, limit)
+	}
+	return posts, err
+}
+
+// runSearchTrending executes one subprocess call for trending search.
+func (c *TwikitClient) runSearchTrending(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {
 	nichesJSON, err := json.Marshal(niches)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling niches: %w", err)
@@ -348,7 +361,20 @@ func (c *TwikitClient) FetchTrendingPosts(ctx context.Context, niches []string, 
 		return nil, fmt.Errorf("running twikit subprocess: %w", err)
 	}
 
+	// Log any warnings even on successful exit (makes partial failures visible).
+	if stderr.Len() > 0 {
+		slog.Warn("twikit search had warnings", "stderr", truncate(stderr.String(), 300))
+	}
+
 	return parseTwikitTrendingOutput(stdout.Bytes())
+}
+
+// truncate returns s truncated to max characters, appending "..." if trimmed.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 // findPython locates python3 or python on PATH.
