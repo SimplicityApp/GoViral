@@ -10,12 +10,18 @@ import (
 	"time"
 )
 
-const apiBase = "https://api.telegram.org/bot"
+const (
+	apiBase         = "https://api.telegram.org/bot"
+	apiTimeout      = 30 * time.Second // regular API calls
+	pollHTTPTimeout = 60 * time.Second // must exceed the Telegram poll timeout
+	pollTimeout     = 25               // seconds Telegram waits for an update
+)
 
 // Client is a Telegram Bot API client.
 type Client struct {
-	token      string
-	httpClient *http.Client
+	token          string
+	httpClient     *http.Client // for regular API calls
+	pollHTTPClient *http.Client // for long-polling getUpdates
 }
 
 // NewClient creates a new Telegram Bot API client.
@@ -23,7 +29,10 @@ func NewClient(token string) *Client {
 	return &Client{
 		token: token,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: apiTimeout,
+		},
+		pollHTTPClient: &http.Client{
+			Timeout: pollHTTPTimeout,
 		},
 	}
 }
@@ -109,12 +118,13 @@ func (c *Client) EditMessage(ctx context.Context, chatID, messageID int64, text 
 }
 
 // GetUpdates retrieves updates using long polling.
-func (c *Client) GetUpdates(ctx context.Context, offset int64, timeout int) ([]Update, error) {
+// It uses a dedicated HTTP client with a longer timeout than the poll window.
+func (c *Client) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
 	body := map[string]interface{}{
 		"offset":  offset,
-		"timeout": timeout,
+		"timeout": pollTimeout,
 	}
-	data, err := c.call(ctx, "getUpdates", body)
+	data, err := c.callWithClient(ctx, c.pollHTTPClient, "getUpdates", body)
 	if err != nil {
 		return nil, fmt.Errorf("getting updates: %w", err)
 	}
@@ -160,6 +170,10 @@ func ParseWebhookUpdate(r *http.Request) (*Update, error) {
 }
 
 func (c *Client) call(ctx context.Context, method string, body interface{}) (json.RawMessage, error) {
+	return c.callWithClient(ctx, c.httpClient, method, body)
+}
+
+func (c *Client) callWithClient(ctx context.Context, client *http.Client, method string, body interface{}) (json.RawMessage, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling request: %w", err)
@@ -172,7 +186,7 @@ func (c *Client) call(ctx context.Context, method string, body interface{}) (jso
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}

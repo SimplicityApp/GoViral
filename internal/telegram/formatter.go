@@ -21,7 +21,11 @@ func FormatBatchNotification(batch *models.DaemonBatch, contents []models.Genera
 		}
 		// Escape markdown special characters in content
 		preview = escapeMarkdown(preview)
-		sb.WriteString(fmt.Sprintf("*Draft %d:*\n%s\n\n", i+1, preview))
+		label := fmt.Sprintf("*Draft %d:*", i+1)
+		if c.IsRepost {
+			label = fmt.Sprintf("*Draft %d \\[repost\\]:*", i+1)
+		}
+		sb.WriteString(fmt.Sprintf("%s\n%s\n\n", label, preview))
 	}
 
 	sb.WriteString("---\n")

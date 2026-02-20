@@ -14,6 +14,8 @@ import (
 	"github.com/shuhao/goviral/apps/server/handler"
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/apps/server/service"
+	"github.com/shuhao/goviral/internal/ai/claude"
+	"github.com/shuhao/goviral/internal/ai/generator"
 	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/internal/daemon"
 	"github.com/shuhao/goviral/internal/db"
@@ -46,6 +48,7 @@ func main() {
 		makeDaemonGenerateFn(generateSvc),
 		makeDaemonPublishFn(publishSvc),
 		makeDaemonDiscoverFn(database, cfg),
+		makeDaemonClassifyFn(database, cfg),
 	)
 
 	setupRoutes(srv, d)
@@ -208,7 +211,7 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 // --- Daemon adapter functions ---
 
 func makeDaemonGenerateFn(svc *service.GenerateService) daemon.GenerateFunc {
-	return func(ctx context.Context, platform string, trendingIDs []int64, count int) ([]int64, error) {
+	return func(ctx context.Context, platform string, trendingIDs []int64, count int, isRepost bool) ([]int64, error) {
 		progress := make(chan dto.ProgressEvent, 10)
 		go func() {
 			for range progress {
@@ -219,6 +222,7 @@ func makeDaemonGenerateFn(svc *service.GenerateService) daemon.GenerateFunc {
 			TrendingPostIDs: trendingIDs,
 			TargetPlatform:  platform,
 			Count:           count,
+			IsRepost:        isRepost,
 		}, progress)
 		if err != nil {
 			return nil, err
@@ -281,5 +285,52 @@ func makeDaemonDiscoverFn(database *db.DB, cfg *config.Config) daemon.DiscoverFu
 			ids = append(ids, tp.ID)
 		}
 		return ids, nil
+	}
+}
+
+func makeDaemonClassifyFn(database *db.DB, cfg *config.Config) daemon.ClassifyFunc {
+	if cfg.Claude.APIKey == "" {
+		return nil
+	}
+	return func(ctx context.Context, trendingIDs []int64) (rewriteIDs, repostIDs []int64, err error) {
+		// Fetch trending posts from DB
+		var posts []models.TrendingPost
+		for _, id := range trendingIDs {
+			tp, err := database.GetTrendingPostByID(id)
+			if err != nil {
+				slog.Error("fetching trending post for classification", "id", id, "error", err)
+				continue
+			}
+			if tp != nil {
+				posts = append(posts, *tp)
+			}
+		}
+		if len(posts) == 0 {
+			return trendingIDs, nil, nil // default all to rewrite
+		}
+
+		claudeClient := claude.NewClient(cfg.Claude.APIKey, cfg.Claude.Model)
+		gen := generator.NewGenerator(claudeClient)
+
+		results, err := gen.ClassifyPosts(ctx, posts)
+		if err != nil {
+			return trendingIDs, nil, nil // on error, default all to rewrite
+		}
+
+		// Map results back to IDs
+		for i, r := range results {
+			if i >= len(posts) {
+				break
+			}
+			id := posts[i].ID
+			if r.Decision == "repost" {
+				repostIDs = append(repostIDs, id)
+			} else {
+				rewriteIDs = append(rewriteIDs, id)
+			}
+			slog.Info("classified trending post", "id", id, "decision", r.Decision, "confidence", r.Confidence, "reasoning", r.Reasoning)
+		}
+
+		return rewriteIDs, repostIDs, nil
 	}
 }

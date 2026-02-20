@@ -16,13 +16,17 @@ import (
 )
 
 // GenerateFunc generates content for the given trending post IDs and returns content IDs.
-type GenerateFunc func(ctx context.Context, platform string, trendingIDs []int64, count int) ([]int64, error)
+// The isRepost parameter indicates whether to generate repost commentary or full rewrites.
+type GenerateFunc func(ctx context.Context, platform string, trendingIDs []int64, count int, isRepost bool) ([]int64, error)
 
 // PublishFunc publishes a content item and returns the post IDs.
 type PublishFunc func(ctx context.Context, contentID int64) ([]string, error)
 
 // DiscoverFunc fetches trending posts for a platform and returns their IDs.
 type DiscoverFunc func(ctx context.Context, platform string, period string, minLikes, limit int) ([]int64, error)
+
+// ClassifyFunc classifies trending posts as rewrite or repost, returning the split IDs.
+type ClassifyFunc func(ctx context.Context, trendingIDs []int64) (rewriteIDs, repostIDs []int64, err error)
 
 // Status reports daemon running state per platform.
 type Status struct {
@@ -49,6 +53,7 @@ type Daemon struct {
 	generateFn GenerateFunc
 	publishFn  PublishFunc
 	discoverFn DiscoverFunc
+	classifyFn ClassifyFunc
 
 	mu        sync.RWMutex
 	running   bool
@@ -57,8 +62,8 @@ type Daemon struct {
 	lastBatch map[string]*int64
 }
 
-// New creates a new Daemon instance.
-func New(cfg *config.Config, database *db.DB, generateFn GenerateFunc, publishFn PublishFunc, discoverFn DiscoverFunc) *Daemon {
+// New creates a new Daemon instance. classifyFn is optional — if nil, all posts default to rewrite.
+func New(cfg *config.Config, database *db.DB, generateFn GenerateFunc, publishFn PublishFunc, discoverFn DiscoverFunc, classifyFn ClassifyFunc) *Daemon {
 	var tg *telegram.Client
 	if cfg.Telegram.BotToken != "" {
 		tg = telegram.NewClient(cfg.Telegram.BotToken)
@@ -79,6 +84,7 @@ func New(cfg *config.Config, database *db.DB, generateFn GenerateFunc, publishFn
 		generateFn:   generateFn,
 		publishFn:    publishFn,
 		discoverFn:   discoverFn,
+		classifyFn:   classifyFn,
 		lastRun:      make(map[string]*time.Time),
 		lastBatch:    make(map[string]*int64),
 	}
@@ -117,6 +123,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 				slog.Info("telegram webhook registered", "url", d.cfg.Telegram.WebhookURL)
 			}
 		} else {
+			// Clear any previously-registered webhook so getUpdates long-polling works.
+			if err := d.tg.DeleteWebhook(ctx); err != nil {
+				slog.Warn("clearing telegram webhook before polling (may be harmless)", "error", err)
+			}
 			go d.startTelegramPoller(ctx)
 		}
 	}
@@ -287,11 +297,38 @@ func (d *Daemon) runPipeline(ctx context.Context, platform string) {
 		trendingIDs = trendingIDs[:limit]
 	}
 
-	// 2. Generate content
-	contentIDs, err := d.generateFn(ctx, platform, trendingIDs, d.cfg.Daemon.MaxPerBatch)
-	if err != nil {
-		slog.Error("daemon generate failed", "platform", platform, "error", err)
-		return
+	// 2. Classify posts as rewrite vs repost
+	var rewriteIDs, repostIDs []int64
+	if d.classifyFn != nil {
+		rewriteIDs, repostIDs, err = d.classifyFn(ctx, trendingIDs)
+		if err != nil {
+			slog.Error("daemon classify failed, defaulting all to rewrite", "platform", platform, "error", err)
+			rewriteIDs = trendingIDs
+			repostIDs = nil
+		}
+		slog.Info("daemon classify complete", "platform", platform, "rewrites", len(rewriteIDs), "reposts", len(repostIDs))
+	} else {
+		// No classifier — all posts default to rewrite
+		rewriteIDs = trendingIDs
+	}
+
+	// 3. Generate rewrites + reposts
+	var contentIDs []int64
+	if len(rewriteIDs) > 0 {
+		ids, err := d.generateFn(ctx, platform, rewriteIDs, d.cfg.Daemon.MaxPerBatch, false)
+		if err != nil {
+			slog.Error("daemon generate rewrites failed", "platform", platform, "error", err)
+		} else {
+			contentIDs = append(contentIDs, ids...)
+		}
+	}
+	if len(repostIDs) > 0 {
+		ids, err := d.generateFn(ctx, platform, repostIDs, d.cfg.Daemon.MaxPerBatch, true)
+		if err != nil {
+			slog.Error("daemon generate reposts failed", "platform", platform, "error", err)
+		} else {
+			contentIDs = append(contentIDs, ids...)
+		}
 	}
 	if len(contentIDs) == 0 {
 		slog.Info("daemon: no content generated", "platform", platform)
@@ -362,7 +399,7 @@ func (d *Daemon) startTelegramPoller(ctx context.Context) {
 		default:
 		}
 
-		updates, err := d.tg.GetUpdates(ctx, offset, 30)
+		updates, err := d.tg.GetUpdates(ctx, offset)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -385,12 +422,17 @@ func (d *Daemon) handleUpdate(update *telegram.Update) {
 	}
 
 	msg := update.Message
+	slog.Info("telegram update received", "chat_id", msg.Chat.ID, "text_preview", truncate(msg.Text, 60))
+
 	if msg.Chat.ID != d.cfg.Telegram.ChatID {
+		slog.Warn("telegram message from unexpected chat, ignoring", "got", msg.Chat.ID, "want", d.cfg.Telegram.ChatID)
 		return
 	}
 
-	// Must be a reply to one of our messages
+	// Must be a reply to one of our messages; otherwise treat as standalone command
 	if msg.ReplyToMessage == nil {
+		slog.Info("telegram standalone command received", "text", truncate(msg.Text, 60))
+		go d.handleStandaloneCommand(context.Background(), msg)
 		return
 	}
 
@@ -441,6 +483,52 @@ func (d *Daemon) handleUpdate(update *telegram.Update) {
 	if err := d.executeBatchAction(ctx, batch, intent, "telegram"); err != nil {
 		slog.Error("executing batch action", "batch_id", batch.ID, "error", err)
 		d.sendTelegramReply(ctx, fmt.Sprintf("Failed to execute action: %v", err))
+	}
+}
+
+func (d *Daemon) handleStandaloneCommand(ctx context.Context, msg *telegram.Message) {
+	if d.intentParser == nil {
+		d.sendTelegramReply(ctx, "Intent parser not configured (missing Claude API key)")
+		return
+	}
+
+	// Find the most recent active batch across all platforms
+	batch, err := d.db.GetLatestActiveDaemonBatch()
+	if err != nil {
+		slog.Error("finding latest active batch for standalone command", "error", err)
+		d.sendTelegramReply(ctx, fmt.Sprintf("Failed to find active batch: %v", err))
+		return
+	}
+	if batch == nil {
+		d.sendTelegramReply(ctx, "No active batch found. Run the pipeline first.")
+		return
+	}
+
+	contents, err := d.db.GetGeneratedContentByBatchID(batch.ID)
+	if err != nil {
+		slog.Error("getting batch contents for standalone command", "error", err)
+		return
+	}
+
+	// Reuse existing intent parser (regex fast-path + Claude AI fallback)
+	intent, err := d.intentParser.Parse(ctx, batch, contents, msg.Text)
+	if err != nil {
+		slog.Error("parsing standalone command intent", "batch_id", batch.ID, "error", err)
+		d.sendTelegramReply(ctx, fmt.Sprintf("Could not understand command: %v", err))
+		return
+	}
+
+	// Store parsed intent on the batch
+	intentJSON, _ := json.Marshal(intent)
+	d.db.UpdateDaemonBatchStatus(batch.ID, batch.Status, map[string]interface{}{
+		"parsed_intent": string(intentJSON),
+		"reply_text":    msg.Text,
+	})
+
+	// Reuse existing batch action executor
+	if err := d.executeBatchAction(ctx, batch, intent, "telegram"); err != nil {
+		slog.Error("executing standalone command", "batch_id", batch.ID, "error", err)
+		d.sendTelegramReply(ctx, fmt.Sprintf("Failed to execute: %v", err))
 	}
 }
 
@@ -592,4 +680,11 @@ func (d *Daemon) sendTelegramReply(ctx context.Context, text string) {
 	if err != nil {
 		slog.Error("sending telegram reply", "error", err)
 	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
