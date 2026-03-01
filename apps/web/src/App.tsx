@@ -11,6 +11,10 @@ import { History } from '@/pages/History'
 import { Publish } from '@/pages/Publish'
 import { Settings } from '@/pages/Settings'
 import { Autopilot } from '@/pages/Autopilot'
+import { CodeToPost } from '@/pages/CodeToPost'
+import { VideoPublish } from '@/pages/VideoPublish'
+import { Terms } from '@/pages/Terms'
+import { Privacy } from '@/pages/Privacy'
 
 function App() {
   return (
@@ -20,6 +24,8 @@ function App() {
           <Route path="/" element={<Navigate to={`/${defaultPlatform}/dashboard`} replace />} />
           <Route element={<RootLayout />}>
             <Route path="/settings" element={<Settings />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/:platform" element={<PlatformLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
@@ -29,6 +35,8 @@ function App() {
               <Route path="history" element={<History />} />
               <Route path="publish" element={<Publish />} />
               <Route path="autopilot" element={<Autopilot />} />
+              <Route path="code-to-post" element={<CodeToPost />} />
+              <Route path="video" element={<VideoPublish />} />
             </Route>
           </Route>
         </Routes>
