@@ -10,26 +10,26 @@ import (
 	linkedinplatform "github.com/shuhao/goviral/internal/platform/linkedin"
 )
 
-var likitLoginCmd = &cobra.Command{
-	Use:   "likit-login",
-	Short: "Extract LinkedIn cookies from Chrome for the likit fallback",
+var linkitinLoginCmd = &cobra.Command{
+	Use:   "linkitin-login",
+	Short: "Extract LinkedIn cookies from Chrome for the linkitin fallback",
 	Long: `Extracts your LinkedIn session cookies from Chrome and saves them
-to ~/.goviral/likit_cookies.json. These cookies are used as a fallback
+to ~/.goviral/linkitin_cookies.json. These cookies are used as a fallback
 when the LinkedIn official API is unavailable or unconfigured.
 
 Prerequisites: you must be logged into LinkedIn in Chrome.
 You only need to run this once (or again if cookies expire).`,
-	RunE: runLikitLogin,
+	RunE: runLinkitinLogin,
 }
 
 func init() {
-	rootCmd.AddCommand(likitLoginCmd)
+	rootCmd.AddCommand(linkitinLoginCmd)
 }
 
-func runLikitLogin(cmd *cobra.Command, args []string) error {
-	lc, err := linkedinplatform.NewLikitClient()
+func runLinkitinLogin(cmd *cobra.Command, args []string) error {
+	lc, err := linkedinplatform.NewLinkitinClient()
 	if err != nil {
-		return fmt.Errorf("setting up likit: %w", err)
+		return fmt.Errorf("setting up linkitin: %w", err)
 	}
 
 	fmt.Println("Extracting LinkedIn cookies from Chrome...")
@@ -39,7 +39,7 @@ func runLikitLogin(cmd *cobra.Command, args []string) error {
 
 	successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
 	fmt.Println(successStyle.Render("\nCookies extracted successfully!"))
-	fmt.Println("Saved to ~/.goviral/likit_cookies.json")
-	fmt.Println("The likit fallback will now be used when the LinkedIn API is unavailable.")
+	fmt.Println("Saved to ~/.goviral/linkitin_cookies.json")
+	fmt.Println("The linkitin fallback will now be used when the LinkedIn API is unavailable.")
 	return nil
 }

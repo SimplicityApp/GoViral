@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bridge script for GoViral subprocess integration.
 
-Reads JSON commands from stdin (one per line), executes them via LikitClient,
+Reads JSON commands from stdin (one per line), executes them via LinkitinClient,
 and writes JSON responses to stdout (one per line).
 
 Commands:
@@ -18,6 +18,7 @@ Commands:
     {"action": "create_scheduled_post", "text": "...", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}
     {"action": "create_scheduled_post_with_image", "text": "...", "image_data": "<base64>", "filename": "image.png", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}
     {"action": "delete_post", "post_urn": "urn:li:activity:..."}
+    {"action": "comment_post", "post_urn": "urn:li:activity:...", "text": "Great insight!"}
 """
 import json
 import os
@@ -28,7 +29,7 @@ import sys
 # Subsequent subprocesses check this file to restore proxy mode without
 # re-running the full browser login flow.
 _GOVIRAL_DIR = os.path.join(os.path.expanduser("~"), ".goviral")
-_CHROME_PROXY_MARKER = os.path.join(_GOVIRAL_DIR, "likit_chrome_proxy")
+_CHROME_PROXY_MARKER = os.path.join(_GOVIRAL_DIR, "linkitin_chrome_proxy")
 
 
 def ensure_package(package_name, pip_name=None):
@@ -44,28 +45,14 @@ def ensure_package(package_name, pip_name=None):
         )
 
 
-# Ensure dependencies are available.
-ensure_package("httpx")
-ensure_package("pydantic")
+# Ensure linkitin is available (installed from PyPI).
+ensure_package("linkitin")
 
 
 import asyncio
 import base64
 
-# Add parent directory to path so likit package can be found when running
-# from the scripts directory or from Go's embedded copy.
-script_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(script_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-# Also add the likit package directory for when the bridge is embedded
-# alongside the likit package in Go.
-likit_pkg_dir = os.path.join(script_dir, "..")
-if likit_pkg_dir not in sys.path:
-    sys.path.insert(0, os.path.abspath(likit_pkg_dir))
-
-from likit import LikitClient
+from linkitin import LinkitinClient
 
 
 async def handle_command(client, cmd):
@@ -190,6 +177,15 @@ async def handle_command(client, cmd):
         )
         return {"urn": urn}
 
+    elif action == "comment_post":
+        post_urn = cmd.get("post_urn", "")
+        text = cmd.get("text", "")
+        if not post_urn or not text:
+            return {"error": "comment_post requires post_urn and text"}
+        thread_urn = cmd.get("thread_urn", "") or ""
+        urn = await client.comment_post(post_urn=post_urn, text=text, thread_urn=thread_urn)
+        return {"urn": urn}
+
     elif action == "delete_post":
         post_urn = cmd.get("post_urn", "")
         if not post_urn:
@@ -202,7 +198,7 @@ async def handle_command(client, cmd):
 
 
 async def main():
-    client = LikitClient(cookies_path=os.path.join(_GOVIRAL_DIR, "likit_cookies.json"))
+    client = LinkitinClient(cookies_path=os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json"))
 
     # Try to load saved cookies on startup.
     loaded = False
@@ -215,7 +211,7 @@ async def main():
         # Chrome proxy mode was previously activated (extract-cookies used).
         # Restore it: route all requests through Chrome's live session.
         try:
-            from likit.chrome_proxy import chrome_validate_session
+            from linkitin.chrome_proxy import chrome_validate_session
             if chrome_validate_session():
                 client.session.use_chrome_proxy = True
             else:

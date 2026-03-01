@@ -46,6 +46,10 @@ func (m *mockLinkedinPoster) Repost(_ context.Context, _ string, _ string) (stri
 	return m.postID, m.err
 }
 
+func (m *mockLinkedinPoster) CreateComment(_ context.Context, _ string, _ string) (string, error) {
+	return m.postID, m.err
+}
+
 func (m *mockLinkedinPoster) CreateScheduledPost(_ context.Context, _ string, _ time.Time) (string, error) {
 	return m.postID, m.err
 }
@@ -54,12 +58,12 @@ func (m *mockLinkedinPoster) CreateScheduledPostWithImage(_ context.Context, _ s
 	return m.postID, m.err
 }
 
-func TestFallbackClient_PrimarySucceeds_LikitNotCalled(t *testing.T) {
+func TestFallbackClient_PrimarySucceeds_LinkitinNotCalled(t *testing.T) {
 	expectedPosts := []models.Post{{PlatformPostID: "primary-1", Platform: "linkedin"}}
 	primary := &mockLinkedinFetcher{posts: expectedPosts}
-	likit := &mockLinkedinFetcher{err: fmt.Errorf("should not be called")}
+	linkitin := &mockLinkedinFetcher{err: fmt.Errorf("should not be called")}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	posts, err := fc.FetchMyPosts(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -69,46 +73,46 @@ func TestFallbackClient_PrimarySucceeds_LikitNotCalled(t *testing.T) {
 	}
 }
 
-func TestFallbackClient_PrimaryFails_LikitSucceeds(t *testing.T) {
+func TestFallbackClient_PrimaryFails_LinkitinSucceeds(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("API error")}
-	likitPosts := []models.Post{{PlatformPostID: "likit-1", Platform: "linkedin"}}
-	likit := &mockLinkedinFetcher{posts: likitPosts}
+	linkitinPosts := []models.Post{{PlatformPostID: "linkitin-1", Platform: "linkedin"}}
+	linkitin := &mockLinkedinFetcher{posts: linkitinPosts}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	posts, err := fc.FetchMyPosts(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(posts) != 1 || posts[0].PlatformPostID != "likit-1" {
-		t.Errorf("expected likit posts, got %v", posts)
+	if len(posts) != 1 || posts[0].PlatformPostID != "linkitin-1" {
+		t.Errorf("expected linkitin posts, got %v", posts)
 	}
 }
 
 func TestFallbackClient_BothFail(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("primary error")}
-	likit := &mockLinkedinFetcher{err: fmt.Errorf("likit error")}
+	linkitin := &mockLinkedinFetcher{err: fmt.Errorf("linkitin error")}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	_, err := fc.FetchMyPosts(context.Background(), 10)
 	if err == nil {
 		t.Fatal("expected error when both fail, got nil")
 	}
 	errMsg := err.Error()
-	if errMsg != "official API failed: primary error; likit fallback also failed: likit error" {
+	if errMsg != "official API failed: primary error; linkitin fallback also failed: linkitin error" {
 		t.Errorf("unexpected error message: %s", errMsg)
 	}
 }
 
-func TestFallbackClient_LikitNil(t *testing.T) {
+func TestFallbackClient_LinkitinNil(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("primary error")}
 
-	fc := &FallbackClient{primary: primary, likit: nil}
+	fc := &FallbackClient{primary: primary, linkitin: nil}
 	_, err := fc.FetchMyPosts(context.Background(), 10)
 	if err == nil {
-		t.Fatal("expected error when likit is nil, got nil")
+		t.Fatal("expected error when linkitin is nil, got nil")
 	}
 	errMsg := err.Error()
-	if errMsg != "official LinkedIn API failed: primary error (likit fallback unavailable)" {
+	if errMsg != "official LinkedIn API failed: primary error (linkitin fallback unavailable)" {
 		t.Errorf("unexpected error message: %s", errMsg)
 	}
 }
@@ -116,9 +120,9 @@ func TestFallbackClient_LikitNil(t *testing.T) {
 func TestFallbackClient_FetchTrendingPosts_UsesPrimary(t *testing.T) {
 	expectedPosts := []models.TrendingPost{{PlatformPostID: "trending-1", Platform: "linkedin"}}
 	primary := &mockLinkedinFetcher{trendingPosts: expectedPosts}
-	likit := &mockLinkedinFetcher{err: fmt.Errorf("should not be called")}
+	linkitin := &mockLinkedinFetcher{err: fmt.Errorf("should not be called")}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	posts, err := fc.FetchTrendingPosts(context.Background(), []string{"tech"}, "day", 100, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -128,67 +132,67 @@ func TestFallbackClient_FetchTrendingPosts_UsesPrimary(t *testing.T) {
 	}
 }
 
-func TestFallbackClient_FetchTrendingPosts_PrimaryFails_LikitSucceeds(t *testing.T) {
+func TestFallbackClient_FetchTrendingPosts_PrimaryFails_LinkitinSucceeds(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("API error")}
-	likitPosts := []models.TrendingPost{{PlatformPostID: "likit-1", Platform: "linkedin"}}
-	likit := &mockLinkedinFetcher{trendingPosts: likitPosts}
+	linkitinPosts := []models.TrendingPost{{PlatformPostID: "linkitin-1", Platform: "linkedin"}}
+	linkitin := &mockLinkedinFetcher{trendingPosts: linkitinPosts}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	posts, err := fc.FetchTrendingPosts(context.Background(), []string{"tech"}, "day", 100, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(posts) != 1 || posts[0].PlatformPostID != "likit-1" {
-		t.Errorf("expected likit trending posts, got %v", posts)
+	if len(posts) != 1 || posts[0].PlatformPostID != "linkitin-1" {
+		t.Errorf("expected linkitin trending posts, got %v", posts)
 	}
 }
 
-func TestFallbackClient_FetchTrendingPosts_LikitNil(t *testing.T) {
+func TestFallbackClient_FetchTrendingPosts_LinkitinNil(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("API error")}
 
-	fc := &FallbackClient{primary: primary, likit: nil}
+	fc := &FallbackClient{primary: primary, linkitin: nil}
 	_, err := fc.FetchTrendingPosts(context.Background(), []string{"tech"}, "day", 100, 10)
 	if err == nil {
-		t.Fatal("expected error when likit is nil")
+		t.Fatal("expected error when linkitin is nil")
 	}
 }
 
 func TestFallbackClient_PrimaryDisabled_SkipsPrimary(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("status 401: Unauthorized")}
-	likitPosts := []models.Post{{PlatformPostID: "likit-1", Platform: "linkedin"}}
-	likit := &mockLinkedinFetcher{posts: likitPosts}
+	linkitinPosts := []models.Post{{PlatformPostID: "linkitin-1", Platform: "linkedin"}}
+	linkitin := &mockLinkedinFetcher{posts: linkitinPosts}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 
-	// First call: primary fails with 401, falls back to likit, disables primary.
+	// First call: primary fails with 401, falls back to linkitin, disables primary.
 	posts, err := fc.FetchMyPosts(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("first call unexpected error: %v", err)
 	}
-	if posts[0].PlatformPostID != "likit-1" {
-		t.Errorf("expected likit posts on first call")
+	if posts[0].PlatformPostID != "linkitin-1" {
+		t.Errorf("expected linkitin posts on first call")
 	}
 	if !fc.primaryDisabled {
 		t.Fatal("expected primaryDisabled to be true after 401")
 	}
 
-	// Second call: should go straight to likit without touching primary.
+	// Second call: should go straight to linkitin without touching primary.
 	primary.err = fmt.Errorf("should not be called")
 	posts, err = fc.FetchMyPosts(context.Background(), 10)
 	if err != nil {
 		t.Fatalf("second call unexpected error: %v", err)
 	}
-	if posts[0].PlatformPostID != "likit-1" {
-		t.Errorf("expected likit posts on second call")
+	if posts[0].PlatformPostID != "linkitin-1" {
+		t.Errorf("expected linkitin posts on second call")
 	}
 }
 
 func TestFallbackClient_NonAccountError_DoesNotDisable(t *testing.T) {
 	primary := &mockLinkedinFetcher{err: fmt.Errorf("network timeout")}
-	likitPosts := []models.Post{{PlatformPostID: "likit-1", Platform: "linkedin"}}
-	likit := &mockLinkedinFetcher{posts: likitPosts}
+	linkitinPosts := []models.Post{{PlatformPostID: "linkitin-1", Platform: "linkedin"}}
+	linkitin := &mockLinkedinFetcher{posts: linkitinPosts}
 
-	fc := &FallbackClient{primary: primary, likit: likit}
+	fc := &FallbackClient{primary: primary, linkitin: linkitin}
 	_, _ = fc.FetchMyPosts(context.Background(), 10)
 
 	if fc.primaryDisabled {
@@ -199,8 +203,8 @@ func TestFallbackClient_NonAccountError_DoesNotDisable(t *testing.T) {
 func TestFallbackClient_CreatePost_Success(t *testing.T) {
 	poster := &mockLinkedinPoster{postID: "urn:li:share:123"}
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: poster,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: poster,
 	}
 
 	urn, err := fc.CreatePost(context.Background(), "Hello LinkedIn!")
@@ -214,8 +218,8 @@ func TestFallbackClient_CreatePost_Success(t *testing.T) {
 
 func TestFallbackClient_CreatePost_PosterUnavailable(t *testing.T) {
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: nil,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: nil,
 	}
 
 	_, err := fc.CreatePost(context.Background(), "Hello LinkedIn!")
@@ -227,8 +231,8 @@ func TestFallbackClient_CreatePost_PosterUnavailable(t *testing.T) {
 func TestFallbackClient_UploadImage_Success(t *testing.T) {
 	poster := &mockLinkedinPoster{postID: "urn:li:image:456"}
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: poster,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: poster,
 	}
 
 	mediaURN, err := fc.UploadImage(context.Background(), []byte("image-data"), "test.png")
@@ -242,8 +246,8 @@ func TestFallbackClient_UploadImage_Success(t *testing.T) {
 
 func TestFallbackClient_UploadImage_PosterUnavailable(t *testing.T) {
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: nil,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: nil,
 	}
 
 	_, err := fc.UploadImage(context.Background(), []byte("image-data"), "test.png")
@@ -255,8 +259,8 @@ func TestFallbackClient_UploadImage_PosterUnavailable(t *testing.T) {
 func TestFallbackClient_CreatePostWithImage_Success(t *testing.T) {
 	poster := &mockLinkedinPoster{postID: "urn:li:share:789"}
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: poster,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: poster,
 	}
 
 	urn, err := fc.CreatePostWithImage(context.Background(), "Post with image", []byte("img"), "photo.jpg")
@@ -270,8 +274,8 @@ func TestFallbackClient_CreatePostWithImage_Success(t *testing.T) {
 
 func TestFallbackClient_CreatePostWithImage_PosterUnavailable(t *testing.T) {
 	fc := &FallbackClient{
-		primary:     &mockLinkedinFetcher{},
-		likitPoster: nil,
+		primary:        &mockLinkedinFetcher{},
+		linkitinPoster: nil,
 	}
 
 	_, err := fc.CreatePostWithImage(context.Background(), "Post with image", []byte("img"), "photo.jpg")

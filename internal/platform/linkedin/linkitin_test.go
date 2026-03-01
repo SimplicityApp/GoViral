@@ -1,11 +1,12 @@
 package linkedin
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
 
-func TestParseLikitPosts_ValidData(t *testing.T) {
+func TestParseLinkitinPosts_ValidData(t *testing.T) {
 	result := map[string]interface{}{
 		"posts": []interface{}{
 			map[string]interface{}{
@@ -35,7 +36,7 @@ func TestParseLikitPosts_ValidData(t *testing.T) {
 		},
 	}
 
-	posts, err := parseLikitPosts(result)
+	posts, err := parseLinkitinPosts(result)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,23 +81,53 @@ func TestParseLikitPosts_ValidData(t *testing.T) {
 	}
 }
 
-func TestParseLikitPosts_MissingPostsField(t *testing.T) {
+func TestIsLinkitinAuthError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"unrelated error", errors.New("network timeout"), false},
+		{"jsessionid not set", errors.New("JSESSIONID not set - call set_cookies() or login first"), true},
+		{"not logged in", errors.New("linkitin: not logged in"), true},
+		{"login first", errors.New("please login first"), true},
+		{"session expired", errors.New("session expired, re-authenticate"), true},
+		{"cookies are expired", errors.New("cookies are expired"), true},
+		{"status 401", errors.New("HTTP status code: 401"), true},
+		{"status 403", errors.New("HTTP status code: 403"), true},
+		{"wrapped auth error", errors.New("creating LinkedIn post: JSESSIONID not set"), true},
+		{"case insensitive", errors.New("SESSION EXPIRED"), true},
+		{"status 500 not auth", errors.New("status code: 500"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsLinkitinAuthError(tt.err)
+			if got != tt.want {
+				t.Errorf("IsLinkitinAuthError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseLinkitinPosts_MissingPostsField(t *testing.T) {
 	result := map[string]interface{}{
 		"status": "ok",
 	}
 
-	_, err := parseLikitPosts(result)
+	_, err := parseLinkitinPosts(result)
 	if err == nil {
 		t.Fatal("expected error for missing posts field, got nil")
 	}
 }
 
-func TestParseLikitPosts_EmptyPosts(t *testing.T) {
+func TestParseLinkitinPosts_EmptyPosts(t *testing.T) {
 	result := map[string]interface{}{
 		"posts": []interface{}{},
 	}
 
-	posts, err := parseLikitPosts(result)
+	posts, err := parseLinkitinPosts(result)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

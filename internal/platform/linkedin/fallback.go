@@ -3,7 +3,7 @@ package linkedin
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -15,6 +15,7 @@ import (
 var _ models.PlatformClient = (*FallbackClient)(nil)
 var _ models.LinkedInPoster = (*FallbackClient)(nil)
 var _ models.LinkedInReposter = (*FallbackClient)(nil)
+var _ models.LinkedInCommenter = (*FallbackClient)(nil)
 
 // linkedinFetcher is an internal interface for testability.
 type linkedinFetcher interface {
@@ -28,21 +29,22 @@ type linkedinPoster interface {
 	UploadImage(ctx context.Context, imageData []byte, filename string) (string, error)
 	CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error)
 	Repost(ctx context.Context, postURN string, text string) (string, error)
+	CreateComment(ctx context.Context, postURN string, threadURN string, text string) (string, error)
 	CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error)
 	CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error)
 }
 
-// FallbackClient wraps the official LinkedIn API client with a likit fallback.
-// If the official API fails, it falls back to likit (cookie-based Voyager API).
+// FallbackClient wraps the official LinkedIn API client with a linkitin fallback.
+// If the official API fails, it falls back to linkitin (cookie-based Voyager API).
 type FallbackClient struct {
 	primary         linkedinFetcher
-	likit           linkedinFetcher // may be nil if python is unavailable
-	likitPoster     linkedinPoster  // may be nil if python is unavailable
+	linkitin        linkedinFetcher // may be nil if python is unavailable
+	linkitinPoster  linkedinPoster  // may be nil if python is unavailable
 	primaryDisabled bool
 }
 
 // NewFallbackClient creates a FallbackClient with the official API as primary
-// and likit as fallback. If likit setup fails (e.g. no Python),
+// and linkitin as fallback. If linkitin setup fails (e.g. no Python),
 // the client operates with primary only and logs a warning.
 func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *FallbackClient {
 	primary := NewClient(cfg, influencerURNs)
@@ -52,18 +54,22 @@ func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *Fall
 		primaryDisabled: cfg.AccessToken == "" || cfg.PersonURN == "",
 	}
 
-	lc, err := NewLikitClient()
+	if fc.primaryDisabled {
+		slog.Info("linkedin primary API disabled (no access token or person URN)")
+	}
+
+	lc, err := NewLinkitinClient()
 	if err != nil {
-		log.Printf("likit fallback unavailable: %v (official LinkedIn API only)", err)
+		slog.Warn("linkitin fallback unavailable, official LinkedIn API only", "error", err)
 	} else {
-		fc.likit = lc
-		fc.likitPoster = lc
+		fc.linkitin = lc
+		fc.linkitinPoster = lc
 	}
 
 	return fc
 }
 
-// FetchMyPosts tries the official API first. On failure, falls back to likit if available.
+// FetchMyPosts tries the official API first. On failure, falls back to linkitin if available.
 func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models.Post, error) {
 	if !fc.primaryDisabled {
 		posts, primaryErr := fc.primary.FetchMyPosts(ctx, limit)
@@ -72,26 +78,27 @@ func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models
 		}
 		fc.checkDisablePrimary(primaryErr)
 
-		if fc.likit == nil {
-			return nil, fmt.Errorf("official LinkedIn API failed: %w (likit fallback unavailable)", primaryErr)
+		if fc.linkitin == nil {
+			return nil, fmt.Errorf("official LinkedIn API failed: %w (linkitin fallback unavailable)", primaryErr)
 		}
 
-		log.Printf("official LinkedIn API failed (%v), trying likit fallback...", primaryErr)
-		posts, likitErr := fc.likit.FetchMyPosts(ctx, limit)
-		if likitErr != nil {
-			return nil, fmt.Errorf("official API failed: %w; likit fallback also failed: %w", primaryErr, likitErr)
+		slog.Info("linkedin primary API failed, trying linkitin fallback", "error", primaryErr)
+		posts, linkitinErr := fc.linkitin.FetchMyPosts(ctx, limit)
+		if linkitinErr != nil {
+			return nil, fmt.Errorf("official API failed: %w; linkitin fallback also failed: %w", primaryErr, linkitinErr)
 		}
 		return posts, nil
 	}
 
-	// Primary already known to be down - go straight to likit.
-	if fc.likit == nil {
-		return nil, fmt.Errorf("official LinkedIn API disabled (likit fallback unavailable)")
+	// Primary already known to be down - go straight to linkitin.
+	if fc.linkitin == nil {
+		return nil, fmt.Errorf("official LinkedIn API disabled (linkitin fallback unavailable)")
 	}
-	return fc.likit.FetchMyPosts(ctx, limit)
+	slog.Info("linkedin using linkitin fallback for FetchMyPosts")
+	return fc.linkitin.FetchMyPosts(ctx, limit)
 }
 
-// FetchTrendingPosts tries the official API first. On failure, falls back to likit if available.
+// FetchTrendingPosts tries the official API first. On failure, falls back to linkitin if available.
 func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []string, period string, minLikes int, limit int) ([]models.TrendingPost, error) {
 	if !fc.primaryDisabled {
 		posts, primaryErr := fc.primary.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
@@ -100,70 +107,82 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 		}
 		fc.checkDisablePrimary(primaryErr)
 
-		if fc.likit == nil {
-			return nil, fmt.Errorf("official LinkedIn API failed: %w (likit fallback unavailable)", primaryErr)
+		if fc.linkitin == nil {
+			return nil, fmt.Errorf("official LinkedIn API failed: %w (linkitin fallback unavailable)", primaryErr)
 		}
 
-		log.Printf("official LinkedIn API failed (%v), trying likit fallback...", primaryErr)
-		posts, likitErr := fc.likit.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
-		if likitErr != nil {
-			return nil, fmt.Errorf("official API failed: %w; likit fallback also failed: %w", primaryErr, likitErr)
+		slog.Info("linkedin primary API failed, trying linkitin fallback", "error", primaryErr)
+		posts, linkitinErr := fc.linkitin.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
+		if linkitinErr != nil {
+			return nil, fmt.Errorf("official API failed: %w; linkitin fallback also failed: %w", primaryErr, linkitinErr)
 		}
 		return posts, nil
 	}
 
-	if fc.likit == nil {
-		return nil, fmt.Errorf("official LinkedIn API disabled (likit fallback unavailable)")
+	if fc.linkitin == nil {
+		return nil, fmt.Errorf("official LinkedIn API disabled (linkitin fallback unavailable)")
 	}
-	return fc.likit.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
+	slog.Info("linkedin using linkitin fallback for FetchTrendingPosts", "niches", niches)
+	return fc.linkitin.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
 }
 
-// CreatePost creates a LinkedIn post via likit (official API has no posting support).
+// CreatePost creates a LinkedIn post via linkitin (official API has no posting support).
 func (fc *FallbackClient) CreatePost(ctx context.Context, text string) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn posting requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn posting requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.CreatePost(ctx, text)
+	return fc.linkitinPoster.CreatePost(ctx, text)
 }
 
-// UploadImage uploads an image to LinkedIn via likit (official API has no posting support).
+// UploadImage uploads an image to LinkedIn via linkitin (official API has no posting support).
 func (fc *FallbackClient) UploadImage(ctx context.Context, imageData []byte, filename string) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn image upload requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn image upload requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.UploadImage(ctx, imageData, filename)
+	return fc.linkitinPoster.UploadImage(ctx, imageData, filename)
 }
 
-// CreatePostWithImage creates a LinkedIn post with an image via likit (official API has no posting support).
+// CreatePostWithImage creates a LinkedIn post with an image via linkitin (official API has no posting support).
 func (fc *FallbackClient) CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn posting requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn posting requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.CreatePostWithImage(ctx, text, imageData, filename)
+	return fc.linkitinPoster.CreatePostWithImage(ctx, text, imageData, filename)
 }
 
-// Repost reshares an existing LinkedIn post via likit (official API has no repost support).
+// Repost reshares an existing LinkedIn post via linkitin (official API has no repost support).
 func (fc *FallbackClient) Repost(ctx context.Context, postURN string, text string) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn repost requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn repost requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.Repost(ctx, postURN, text)
+	return fc.linkitinPoster.Repost(ctx, postURN, text)
 }
 
-// CreateScheduledPost schedules a LinkedIn post via likit (official API has no scheduling support).
+// CreateComment posts a comment on a LinkedIn post via linkitin (official API has no comment support).
+// threadURN is the optional urn:li:ugcPost:N for ugcPost threads; pass "" to let linkitin derive it.
+func (fc *FallbackClient) CreateComment(ctx context.Context, postURN string, threadURN string, text string) (string, error) {
+	if fc.linkitinPoster == nil {
+		slog.Error("linkedin comment skipped: linkitin unavailable (run 'goviral linkitin-login')")
+		return "", fmt.Errorf("LinkedIn commenting requires linkitin (cookie-based auth); linkitin is unavailable")
+	}
+	slog.Info("linkedin using linkitin for comment", "post_urn", postURN)
+	return fc.linkitinPoster.CreateComment(ctx, postURN, threadURN, text)
+}
+
+// CreateScheduledPost schedules a LinkedIn post via linkitin (official API has no scheduling support).
 func (fc *FallbackClient) CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn scheduling requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn scheduling requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.CreateScheduledPost(ctx, text, scheduledAt)
+	return fc.linkitinPoster.CreateScheduledPost(ctx, text, scheduledAt)
 }
 
-// CreateScheduledPostWithImage schedules a LinkedIn post with an image via likit (official API has no scheduling support).
+// CreateScheduledPostWithImage schedules a LinkedIn post with an image via linkitin (official API has no scheduling support).
 func (fc *FallbackClient) CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error) {
-	if fc.likitPoster == nil {
-		return "", fmt.Errorf("LinkedIn scheduling requires likit (cookie-based auth); likit is unavailable")
+	if fc.linkitinPoster == nil {
+		return "", fmt.Errorf("LinkedIn scheduling requires linkitin (cookie-based auth); linkitin is unavailable")
 	}
-	return fc.likitPoster.CreateScheduledPostWithImage(ctx, text, imageData, filename, scheduledAt)
+	return fc.linkitinPoster.CreateScheduledPostWithImage(ctx, text, imageData, filename, scheduledAt)
 }
 
 // checkDisablePrimary disables the primary client for subsequent calls if the
