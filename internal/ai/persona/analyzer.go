@@ -30,7 +30,7 @@ func (a *Analyzer) BuildProfile(ctx context.Context, posts []models.Post, platfo
 	userMessage := formatPosts(posts)
 	systemPrompt := prompts.PersonaPrompt(prompts.Platform(platform))
 
-	response, err := a.client.SendMessage(ctx, systemPrompt, userMessage)
+	response, err := a.client.SendMessageJSON(ctx, systemPrompt, userMessage, prompts.PersonaProfileSchema())
 	if err != nil {
 		return nil, fmt.Errorf("building persona profile: %w", err)
 	}
@@ -54,26 +54,10 @@ func formatPosts(posts []models.Post) string {
 }
 
 func parseProfile(response string) (*models.PersonaProfile, error) {
-	cleaned := stripMarkdownJSON(response)
-
 	var profile models.PersonaProfile
-	if err := json.Unmarshal([]byte(cleaned), &profile); err != nil {
+	if err := json.Unmarshal([]byte(response), &profile); err != nil {
 		return nil, fmt.Errorf("parsing persona JSON: %w", err)
 	}
 
 	return &profile, nil
-}
-
-func stripMarkdownJSON(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```json") {
-		s = strings.TrimPrefix(s, "```json")
-		s = strings.TrimSuffix(s, "```")
-		s = strings.TrimSpace(s)
-	} else if strings.HasPrefix(s, "```") {
-		s = strings.TrimPrefix(s, "```")
-		s = strings.TrimSuffix(s, "```")
-		s = strings.TrimSpace(s)
-	}
-	return s
 }

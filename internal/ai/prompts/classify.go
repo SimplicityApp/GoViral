@@ -20,12 +20,7 @@ REPOST (quote tweet / repost with commentary) — the content is tied to a speci
 - Personal stories that can't be ethically rephrased as your own
 - Content where the author's identity is central to the message
 
-For EACH post, respond with a JSON object containing:
+For EACH post, include:
 - "decision": "rewrite" or "repost"
 - "reasoning": 1-sentence explanation
-- "confidence": number 1-10
-
-When given MULTIPLE posts, respond with a JSON array of objects (one per post, in the same order as input).
-When given a SINGLE post, respond with a single JSON object (not an array).
-
-Respond ONLY with valid JSON, no markdown formatting or code blocks.`
+- "confidence": number 1-10`

@@ -12,15 +12,28 @@ import (
 // mockMessageSender implements claude.MessageSender for testing.
 type mockMessageSender struct {
 	response    string
+	jsonResp    string // response for SendMessageJSON (falls back to response if empty)
 	err         error
 	lastSystem  string
 	lastMessage string
+	lastSchema  map[string]any
 }
 
 func (m *mockMessageSender) SendMessage(ctx context.Context, systemPrompt string, userMessage string) (string, error) {
 	m.lastSystem = systemPrompt
 	m.lastMessage = userMessage
 	return m.response, m.err
+}
+
+func (m *mockMessageSender) SendMessageJSON(ctx context.Context, systemPrompt string, userMessage string, schema map[string]any) (string, error) {
+	m.lastSystem = systemPrompt
+	m.lastMessage = userMessage
+	m.lastSchema = schema
+	resp := m.jsonResp
+	if resp == "" {
+		resp = m.response
+	}
+	return resp, m.err
 }
 
 func sampleRequest() models.GenerateRequest {
@@ -50,7 +63,7 @@ func sampleRequest() models.GenerateRequest {
 }
 
 func TestGenerate_Success(t *testing.T) {
-	generatedJSON := `[
+	generatedJSON := `{"results":[
 		{
 			"content": "Hot take: AI isn't replacing devs, it's making the best ones even better.",
 			"viral_mechanic": "contrarian hook",
@@ -61,7 +74,7 @@ func TestGenerate_Success(t *testing.T) {
 			"viral_mechanic": "curiosity gap",
 			"confidence_score": 7
 		}
-	]`
+	]}`
 
 	mock := &mockMessageSender{response: generatedJSON}
 	gen := NewGenerator(mock)
@@ -85,46 +98,13 @@ func TestGenerate_Success(t *testing.T) {
 	if results[1].ConfidenceScore != 7 {
 		t.Errorf("results[1].ConfidenceScore = %d, want 7", results[1].ConfidenceScore)
 	}
-}
-
-func TestGenerate_MarkdownWrappedJSON(t *testing.T) {
-	generatedJSON := "```json\n" + `[{"content": "test content", "viral_mechanic": "hook", "confidence_score": 5}]` + "\n```"
-
-	mock := &mockMessageSender{response: generatedJSON}
-	gen := NewGenerator(mock)
-
-	results, err := gen.Generate(context.Background(), sampleRequest())
-	if err != nil {
-		t.Fatalf("Generate() error = %v", err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("Generate() returned %d results, want 1", len(results))
-	}
-	if results[0].Content != "test content" {
-		t.Errorf("results[0].Content = %q, want 'test content'", results[0].Content)
-	}
-}
-
-func TestGenerate_GenericCodeBlock(t *testing.T) {
-	generatedJSON := "```\n" + `[{"content": "abc", "viral_mechanic": "def", "confidence_score": 6}]` + "\n```"
-
-	mock := &mockMessageSender{response: generatedJSON}
-	gen := NewGenerator(mock)
-
-	results, err := gen.Generate(context.Background(), sampleRequest())
-	if err != nil {
-		t.Fatalf("Generate() error = %v", err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("Generate() returned %d results, want 1", len(results))
-	}
-	if results[0].ConfidenceScore != 6 {
-		t.Errorf("results[0].ConfidenceScore = %d, want 6", results[0].ConfidenceScore)
+	if mock.lastSchema == nil {
+		t.Error("Generate() should use GenerateResults schema")
 	}
 }
 
 func TestGenerate_PromptConstruction(t *testing.T) {
-	mock := &mockMessageSender{response: `[{"content":"x","viral_mechanic":"y","confidence_score":5}]`}
+	mock := &mockMessageSender{response: `{"results":[{"content":"x","viral_mechanic":"y","confidence_score":5}]}`}
 	gen := NewGenerator(mock)
 
 	req := sampleRequest()
@@ -163,7 +143,7 @@ func TestGenerate_PromptConstruction(t *testing.T) {
 }
 
 func TestGenerate_PlatformSpecificPrompts(t *testing.T) {
-	mock := &mockMessageSender{response: `[{"content":"x","viral_mechanic":"y","confidence_score":5}]`}
+	mock := &mockMessageSender{response: `{"results":[{"content":"x","viral_mechanic":"y","confidence_score":5}]}`}
 	gen := NewGenerator(mock)
 
 	// Test LinkedIn rewrite
@@ -234,13 +214,16 @@ func TestClassifyPost_Success(t *testing.T) {
 	if result.Confidence != 8 {
 		t.Errorf("Confidence = %d, want 8", result.Confidence)
 	}
+	if mock.lastSchema == nil {
+		t.Error("ClassifyPost() should use ClassifySingle schema")
+	}
 }
 
 func TestClassifyPosts_Batch(t *testing.T) {
-	mock := &mockMessageSender{response: `[
+	mock := &mockMessageSender{response: `{"results":[
 		{"decision": "rewrite", "reasoning": "Generic take", "confidence": 9},
 		{"decision": "repost", "reasoning": "Personal achievement", "confidence": 7}
-	]`}
+	]}`}
 	gen := NewGenerator(mock)
 
 	posts := []models.TrendingPost{
@@ -261,6 +244,9 @@ func TestClassifyPosts_Batch(t *testing.T) {
 	if results[1].Decision != "repost" {
 		t.Errorf("results[1].Decision = %q, want 'repost'", results[1].Decision)
 	}
+	if mock.lastSchema == nil {
+		t.Error("ClassifyPosts() should use ClassifyBatch schema")
+	}
 }
 
 func TestDecideImage_Success(t *testing.T) {
@@ -277,6 +263,9 @@ func TestDecideImage_Success(t *testing.T) {
 	if decision.Reasoning == "" {
 		t.Error("expected non-empty reasoning")
 	}
+	if mock.lastSchema == nil {
+		t.Error("DecideImage() should use ImageDecision schema")
+	}
 }
 
 func TestGenerateImagePrompt_Success(t *testing.T) {
@@ -290,37 +279,7 @@ func TestGenerateImagePrompt_Success(t *testing.T) {
 	if prompt != "A futuristic cityscape with AI nodes" {
 		t.Errorf("unexpected image prompt: %q", prompt)
 	}
-}
-
-func TestStripMarkdownJSON(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "plain JSON",
-			input: `[{"key": "value"}]`,
-			want:  `[{"key": "value"}]`,
-		},
-		{
-			name:  "json code block",
-			input: "```json\n[{\"key\": \"value\"}]\n```",
-			want:  `[{"key": "value"}]`,
-		},
-		{
-			name:  "generic code block",
-			input: "```\n[{\"key\": \"value\"}]\n```",
-			want:  `[{"key": "value"}]`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := stripMarkdownJSON(tt.input)
-			if got != tt.want {
-				t.Errorf("stripMarkdownJSON() = %q, want %q", got, tt.want)
-			}
-		})
+	if mock.lastSchema == nil {
+		t.Error("GenerateImagePrompt() should use ImagePrompt schema")
 	}
 }

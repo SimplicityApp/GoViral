@@ -17,8 +17,7 @@ var SystemPromptRewriteLinkedIn = `You are a viral content ghostwriter specializ
 - Personal anecdotes with professional lessons are LinkedIn gold
 - Avoid clickbait — LinkedIn's algorithm penalizes it
 
-## Output Format
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
+For each variation, include:
 - "content": the rewritten post (ready to copy-paste, 1000-2000 chars)
 - "viral_mechanic": brief note on what viral mechanic you preserved or used
 - "confidence_score": number 1-10 on viral potential`
@@ -36,8 +35,7 @@ var SystemPromptRepostLinkedIn = `You are a LinkedIn repost specialist. Your job
 - A question at the end drives comments
 - Professional tone but not stiff — you're a person, not a brand
 
-## Output Format
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
+For each variation, include:
 - "content": the repost commentary (1-3 sentences of professional value-add)
 - "viral_mechanic": brief note on what angle you took (insight, experience, industry take, question, etc.)
 - "confidence_score": number 1-10 on viral potential`

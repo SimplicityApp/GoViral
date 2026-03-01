@@ -21,6 +21,7 @@ const (
 // MessageSender defines the interface for sending messages to an LLM.
 type MessageSender interface {
 	SendMessage(ctx context.Context, systemPrompt string, userMessage string) (string, error)
+	SendMessageJSON(ctx context.Context, systemPrompt string, userMessage string, schema map[string]any) (string, error)
 }
 
 // Client is an Anthropic Claude API client.
@@ -42,10 +43,20 @@ func NewClient(apiKey string, model string) *Client {
 }
 
 type apiRequest struct {
-	Model     string       `json:"model"`
-	MaxTokens int          `json:"max_tokens"`
-	System    string       `json:"system"`
-	Messages  []apiMessage `json:"messages"`
+	Model        string        `json:"model"`
+	MaxTokens    int           `json:"max_tokens"`
+	System       string        `json:"system"`
+	Messages     []apiMessage  `json:"messages"`
+	OutputConfig *outputConfig `json:"output_config,omitempty"`
+}
+
+type outputConfig struct {
+	Format outputFormat `json:"format"`
+}
+
+type outputFormat struct {
+	Type   string         `json:"type"`
+	Schema map[string]any `json:"schema,omitempty"`
 }
 
 type apiMessage struct {
@@ -82,7 +93,29 @@ func (c *Client) SendMessage(ctx context.Context, systemPrompt string, userMessa
 			{Role: "user", Content: userMessage},
 		},
 	}
+	return c.sendRequest(ctx, reqBody)
+}
 
+// SendMessageJSON sends a message with structured output, guaranteeing the response matches the given JSON schema.
+func (c *Client) SendMessageJSON(ctx context.Context, systemPrompt string, userMessage string, schema map[string]any) (string, error) {
+	reqBody := apiRequest{
+		Model:     c.model,
+		MaxTokens: defaultMaxTokens,
+		System:    systemPrompt,
+		Messages: []apiMessage{
+			{Role: "user", Content: userMessage},
+		},
+		OutputConfig: &outputConfig{
+			Format: outputFormat{
+				Type:   "json_schema",
+				Schema: schema,
+			},
+		},
+	}
+	return c.sendRequest(ctx, reqBody)
+}
+
+func (c *Client) sendRequest(ctx context.Context, reqBody apiRequest) (string, error) {
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", fmt.Errorf("marshaling request body: %w", err)

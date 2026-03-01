@@ -10,8 +10,7 @@ Consider:
 - Thread starters benefit from a strong visual hook
 - Memes and humor posts often work better as text-only on X
 
-Respond ONLY with valid JSON, no markdown:
-{"suggest_image": true/false, "reasoning": "1-sentence explanation"}`
+Return your decision with "suggest_image" (boolean) and "reasoning" (1-sentence explanation).`
 
 const imageDecisionLinkedIn = `You are an image strategy advisor for LinkedIn. Given a piece of generated content, decide whether an accompanying image would significantly boost engagement.
 
@@ -23,8 +22,7 @@ Consider:
 - Repost commentary usually doesn't need images since the original content is shown
 - Text-only posts CAN work if the writing is exceptional, but images help most posts
 
-Respond ONLY with valid JSON, no markdown:
-{"suggest_image": true/false, "reasoning": "1-sentence explanation"}`
+Return your decision with "suggest_image" (boolean) and "reasoning" (1-sentence explanation).`
 
 const imageGenerationX = `You are an image prompt engineer. Given content being posted on X (Twitter), create a detailed image generation prompt optimized for Gemini's image model.
 
@@ -36,8 +34,7 @@ Image guidelines for X:
 - Modern, digital aesthetic that fits tech/professional X audience
 - High contrast and saturated colors stand out in the feed
 
-Respond ONLY with valid JSON, no markdown:
-{"image_prompt": "detailed description of the image to generate"}`
+Return an "image_prompt" field with a detailed description of the image to generate.`
 
 const imageGenerationLinkedIn = `You are an image prompt engineer. Given content being posted on LinkedIn, create a detailed image generation prompt optimized for Gemini's image model.
 
@@ -50,5 +47,4 @@ Image guidelines for LinkedIn:
 - Clean, modern design with professional color palettes (blues, whites, subtle gradients)
 - Avoid overly casual, meme-like, or stock-photo aesthetics
 
-Respond ONLY with valid JSON, no markdown:
-{"image_prompt": "detailed description of the image to generate"}`
+Return an "image_prompt" field with a detailed description of the image to generate.`

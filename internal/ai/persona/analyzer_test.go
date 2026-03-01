@@ -14,10 +14,17 @@ type mockMessageSender struct {
 	response   string
 	err        error
 	lastSystem string
+	lastSchema map[string]any
 }
 
 func (m *mockMessageSender) SendMessage(ctx context.Context, systemPrompt string, userMessage string) (string, error) {
 	m.lastSystem = systemPrompt
+	return m.response, m.err
+}
+
+func (m *mockMessageSender) SendMessageJSON(ctx context.Context, systemPrompt string, userMessage string, schema map[string]any) (string, error) {
+	m.lastSystem = systemPrompt
+	m.lastSchema = schema
 	return m.response, m.err
 }
 
@@ -76,6 +83,9 @@ func TestBuildProfile_Success(t *testing.T) {
 	if profile.VoiceSummary != "A thoughtful tech leader." {
 		t.Errorf("VoiceSummary = %q, want 'A thoughtful tech leader.'", profile.VoiceSummary)
 	}
+	if mock.lastSchema == nil {
+		t.Error("BuildProfile() should use PersonaProfile schema")
+	}
 }
 
 func TestBuildProfile_PlatformSpecificPrompt(t *testing.T) {
@@ -112,60 +122,6 @@ func TestBuildProfile_PlatformSpecificPrompt(t *testing.T) {
 	}
 	if !strings.Contains(mock.lastSystem, "LinkedIn") {
 		t.Error("LinkedIn platform should use LinkedIn-specific persona prompt")
-	}
-}
-
-func TestBuildProfile_MarkdownWrappedJSON(t *testing.T) {
-	personaJSON := "```json\n" + `{
-		"writing_tone": "casual",
-		"typical_length": "short",
-		"common_themes": ["tech"],
-		"vocabulary_level": "simple",
-		"engagement_patterns": "asks questions",
-		"structural_patterns": ["single posts"],
-		"emoji_usage": "heavy",
-		"hashtag_usage": "none",
-		"call_to_action_style": "direct",
-		"unique_quirks": ["uses slang"],
-		"voice_summary": "Casual tech voice."
-	}` + "\n```"
-
-	mock := &mockMessageSender{response: personaJSON}
-	analyzer := NewAnalyzer(mock)
-
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
-	if err != nil {
-		t.Fatalf("BuildProfile() error = %v", err)
-	}
-	if profile.WritingTone != "casual" {
-		t.Errorf("WritingTone = %q, want 'casual'", profile.WritingTone)
-	}
-}
-
-func TestBuildProfile_MarkdownWrappedGenericCodeBlock(t *testing.T) {
-	personaJSON := "```\n" + `{
-		"writing_tone": "witty",
-		"typical_length": "medium",
-		"common_themes": ["humor"],
-		"vocabulary_level": "moderate",
-		"engagement_patterns": "viral hooks",
-		"structural_patterns": ["threads"],
-		"emoji_usage": "moderate",
-		"hashtag_usage": "sparse",
-		"call_to_action_style": "indirect",
-		"unique_quirks": ["puns"],
-		"voice_summary": "Witty and humorous."
-	}` + "\n```"
-
-	mock := &mockMessageSender{response: personaJSON}
-	analyzer := NewAnalyzer(mock)
-
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
-	if err != nil {
-		t.Fatalf("BuildProfile() error = %v", err)
-	}
-	if profile.WritingTone != "witty" {
-		t.Errorf("WritingTone = %q, want 'witty'", profile.WritingTone)
 	}
 }
 
@@ -233,43 +189,5 @@ func TestFormatPosts(t *testing.T) {
 	}
 	if !strings.Contains(result, "[x]") {
 		t.Error("formatPosts() should contain platform tag")
-	}
-}
-
-func TestStripMarkdownJSON(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "plain JSON",
-			input: `{"key": "value"}`,
-			want:  `{"key": "value"}`,
-		},
-		{
-			name:  "json code block",
-			input: "```json\n{\"key\": \"value\"}\n```",
-			want:  `{"key": "value"}`,
-		},
-		{
-			name:  "generic code block",
-			input: "```\n{\"key\": \"value\"}\n```",
-			want:  `{"key": "value"}`,
-		},
-		{
-			name:  "with whitespace",
-			input: "  \n{\"key\": \"value\"}\n  ",
-			want:  `{"key": "value"}`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := stripMarkdownJSON(tt.input)
-			if got != tt.want {
-				t.Errorf("stripMarkdownJSON() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }

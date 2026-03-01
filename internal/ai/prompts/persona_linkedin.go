@@ -27,4 +27,4 @@ Include in your JSON response:
 - unique_quirks: any distinctive writing habits (as array of strings)
 - voice_summary: a 2-3 sentence summary of their voice, specifically for LinkedIn
 
-Respond ONLY with valid JSON, no markdown formatting or code blocks.`
+Produce your analysis as a JSON object with the fields listed above.`

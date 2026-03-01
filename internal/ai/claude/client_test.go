@@ -2,6 +2,8 @@ package claude
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -177,5 +179,90 @@ func TestSendMessage_ContextCancellation(t *testing.T) {
 	_, err := client.SendMessage(ctx, "system", "user")
 	if err == nil {
 		t.Fatal("SendMessage() expected error for cancelled context, got nil")
+	}
+}
+
+func TestSendMessageJSON_IncludesOutputConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("reading request body: %v", err)
+		}
+
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("unmarshaling request: %v", err)
+		}
+
+		// Verify output_config is present
+		oc, ok := req["output_config"].(map[string]any)
+		if !ok {
+			t.Fatal("output_config missing from request")
+		}
+		format, ok := oc["format"].(map[string]any)
+		if !ok {
+			t.Fatal("output_config.format missing")
+		}
+		if format["type"] != "json_schema" {
+			t.Errorf("format.type = %v, want 'json_schema'", format["type"])
+		}
+		schema, ok := format["schema"].(map[string]any)
+		if !ok {
+			t.Fatal("format.schema missing")
+		}
+		if schema["type"] != "object" {
+			t.Errorf("schema.type = %v, want 'object'", schema["type"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"content":[{"type":"text","text":"{\"result\":\"ok\"}"}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"result": map[string]any{"type": "string"},
+		},
+		"required":             []string{"result"},
+		"additionalProperties": false,
+	}
+
+	result, err := client.SendMessageJSON(context.Background(), "system", "user", schema)
+	if err != nil {
+		t.Fatalf("SendMessageJSON() error = %v", err)
+	}
+	if !strings.Contains(result, `"result":"ok"`) {
+		t.Errorf("unexpected result: %q", result)
+	}
+}
+
+func TestSendMessageJSON_NoOutputConfigInSendMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("reading request body: %v", err)
+		}
+
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("unmarshaling request: %v", err)
+		}
+
+		// Verify output_config is NOT present in regular SendMessage
+		if _, ok := req["output_config"]; ok {
+			t.Error("output_config should not be present in SendMessage request")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"content":[{"type":"text","text":"hello"}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.SendMessage(context.Background(), "system", "user")
+	if err != nil {
+		t.Fatalf("SendMessage() error = %v", err)
 	}
 }

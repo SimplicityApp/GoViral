@@ -51,6 +51,11 @@ func ClassifyPrompt() string {
 	return classifyPrompt
 }
 
+// CompetePrompt returns the system prompt for ranking generated content by viral potential.
+func CompetePrompt() string {
+	return competePrompt
+}
+
 // PersonaPrompt returns the platform-specific persona analysis prompt.
 func PersonaPrompt(platform Platform) string {
 	switch platform {

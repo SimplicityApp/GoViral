@@ -15,8 +15,7 @@ var SystemPromptRewriteX = `You are a viral content ghostwriter specializing in 
 - Questions, polls, and "hot take:" prefixes drive engagement
 - Avoid looking like an ad or a LinkedIn post
 
-## Output Format
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
+For each variation, include:
 - "content": the rewritten post (ready to copy-paste, 280 chars or fewer per tweet)
 - "viral_mechanic": brief note on what viral mechanic you preserved or used
 - "confidence_score": number 1-10 on viral potential`
@@ -34,8 +33,7 @@ var SystemPromptRepostX = `You are a quote tweet specialist for X (Twitter). You
 - Avoid generic reactions like "So true!" or "This."
 - Think of it as the witty comment that makes people engage with BOTH tweets
 
-## Output Format
-Respond ONLY with valid JSON array, no markdown formatting. Each element should have:
+For each variation, include:
 - "content": the quote tweet commentary (1-3 sentences, ideally under 200 characters)
 - "viral_mechanic": brief note on what angle you took (hot take, amplification, anecdote, contrarian, etc.)
 - "confidence_score": number 1-10 on viral potential`
