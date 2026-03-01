@@ -8,6 +8,7 @@ import (
 	"github.com/shuhao/goviral/apps/server/dto"
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/apps/server/service"
+	"github.com/shuhao/goviral/pkg/models"
 )
 
 // GenerateHandler handles content generation requests.
@@ -39,24 +40,41 @@ func (h *GenerateHandler) Post(w http.ResponseWriter, r *http.Request) {
 	if WantsSSE(r) {
 		svcProgress := make(chan dto.ProgressEvent, 10)
 		clientProgress := make(chan dto.ProgressEvent, 10)
+
 		go func() {
-			result, err := h.svc.Generate(r.Context(), req, svcProgress)
-			if err != nil {
-				_ = err
-			}
-			// Forward all service events to the client, injecting result data into the complete event
+			var result []models.GeneratedContent
+			var genErr error
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				result, genErr = h.svc.Generate(r.Context(), req, svcProgress)
+			}()
+
 			for evt := range svcProgress {
-				if evt.Type == "complete" && result != nil {
-					responses := make([]dto.GeneratedContentResponse, len(result))
-					for i, gc := range result {
-						responses[i] = contentToResponse(gc)
+				if evt.Type == "complete" {
+					<-done
+					if result != nil {
+						responses := make([]dto.GeneratedContentResponse, len(result))
+						for i, gc := range result {
+							responses[i] = contentToResponse(gc)
+						}
+						evt.Data = responses
 					}
-					evt.Data = responses
 				}
 				clientProgress <- evt
 			}
+
+			<-done
+			if genErr != nil {
+				clientProgress <- dto.ProgressEvent{
+					Type:    "error",
+					Message: genErr.Error(),
+				}
+			}
 			close(clientProgress)
 		}()
+
 		StreamProgress(w, r, clientProgress)
 		return
 	}

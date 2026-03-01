@@ -41,10 +41,27 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 			HasAuth:      h.cfg.X.AccessToken != "",
 		},
 		LinkedIn: dto.ConfigLinkedInResponse{
-			ClientID:     maskSecret(h.cfg.LinkedIn.ClientID),
-			ClientSecret: maskSecret(h.cfg.LinkedIn.ClientSecret),
-			HasAuth:      h.cfg.LinkedIn.AccessToken != "",
-			HasLikitAuth: likitCookiesExist(),
+			ClientID:        maskSecret(h.cfg.LinkedIn.ClientID),
+			ClientSecret:    maskSecret(h.cfg.LinkedIn.ClientSecret),
+			HasAuth:         h.cfg.LinkedIn.AccessToken != "",
+			HasLinkitinAuth: linkitinCookiesExist(),
+		},
+		GitHub: dto.ConfigGitHubResponse{
+			PersonalAccessToken: maskSecret(h.cfg.GitHub.PersonalAccessToken),
+			DefaultOwner:        h.cfg.GitHub.DefaultOwner,
+			DefaultRepo:         h.cfg.GitHub.DefaultRepo,
+		},
+		YouTube: dto.ConfigYouTubeResponse{
+			ClientID:     maskSecret(h.cfg.YouTube.ClientID),
+			ClientSecret: maskSecret(h.cfg.YouTube.ClientSecret),
+			ChannelID:    h.cfg.YouTube.ChannelID,
+			HasAuth:      h.cfg.YouTube.AccessToken != "",
+		},
+		TikTok: dto.ConfigTikTokResponse{
+			ClientKey:    maskSecret(h.cfg.TikTok.ClientKey),
+			ClientSecret: maskSecret(h.cfg.TikTok.ClientSecret),
+			Username:     h.cfg.TikTok.Username,
+			HasAuth:      h.cfg.TikTok.AccessToken != "",
 		},
 		Niches:         h.cfg.Niches,
 		LinkedInNiches: h.cfg.LinkedInNiches,
@@ -59,8 +76,8 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, resp)
 }
 
-func likitCookiesExist() bool {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "likit_cookies.json")
+func linkitinCookiesExist() bool {
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
 	_, err := os.Stat(cookiePath)
 	return err == nil
 }

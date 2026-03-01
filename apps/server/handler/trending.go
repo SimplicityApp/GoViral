@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shuhao/goviral/apps/server/dto"
@@ -71,6 +72,11 @@ func trendingToResponse(p models.TrendingPost) dto.TrendingPostResponse {
 	if tags == nil {
 		tags = []string{}
 	}
+	isActionable := true
+	if p.Platform == "linkedin" {
+		isActionable = !strings.Contains(p.PlatformPostID, "urn:li:content:") &&
+			!strings.Contains(p.PlatformPostID, "sponsoredContent")
+	}
 	return dto.TrendingPostResponse{
 		ID:             p.ID,
 		Platform:       p.Platform,
@@ -85,5 +91,6 @@ func trendingToResponse(p models.TrendingPost) dto.TrendingPostResponse {
 		NicheTags:      tags,
 		PostedAt:       p.PostedAt,
 		FetchedAt:      p.FetchedAt,
+		IsActionable:   isActionable,
 	}
 }

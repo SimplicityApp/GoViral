@@ -49,6 +49,10 @@ func main() {
 		makeDaemonPublishFn(publishSvc),
 		makeDaemonDiscoverFn(database, cfg),
 		makeDaemonClassifyFn(database, cfg),
+		makeDaemonCommentGenerateFn(generateSvc),
+		makeDaemonCompeteFn(cfg),
+		makeDaemonScheduleFn(publishSvc),
+		makeDaemonActionSelectFn(database, cfg),
 	)
 
 	setupRoutes(srv, d)
@@ -63,6 +67,33 @@ func main() {
 			slog.Error("starting daemon", "error", err)
 		}
 	}
+
+	// Background goroutine: execute pending scheduled posts as they become due
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				pending, err := database.GetPendingScheduledPosts()
+				if err != nil || len(pending) == 0 {
+					continue
+				}
+				for _, sp := range pending {
+					postIDs, _, err := publishSvc.Publish(ctx, sp.GeneratedContentID, false)
+					if err != nil {
+						slog.Error("running due scheduled post", "schedule_id", sp.ID, "error", err)
+						database.UpdateScheduledPostStatus(sp.ID, "failed", err.Error())
+					} else {
+						slog.Info("ran due scheduled post", "schedule_id", sp.ID, "post_ids", postIDs)
+						database.UpdateScheduledPostStatus(sp.ID, "posted", "")
+					}
+				}
+			}
+		}
+	}()
 
 	go func() {
 		if err := srv.Start(); err != nil {
@@ -103,6 +134,8 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	publishSvc := service.NewPublishService(s.DB, s.Cfg)
 	generateSvc := service.NewGenerateService(s.DB, s.Cfg)
 	opStore := service.NewOperationStore(30 * time.Minute)
+	repoSvc := service.NewRepoService(s.DB, s.Cfg)
+	repoH := handler.NewRepoHandler(repoSvc, opStore)
 
 	// Read handlers
 	healthH := handler.NewHealthHandler(s.Cfg)
@@ -125,6 +158,13 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	discoverH := handler.NewDiscoverTrendingHandler(s.DB, s.Cfg, opStore)
 	generateH := handler.NewGenerateHandler(generateSvc, opStore)
 	buildPersonaH := handler.NewBuildPersonaHandler(s.DB, s.Cfg, opStore)
+
+	// Video upload handlers
+	youtubeH := handler.NewYouTubeHandler(publishSvc)
+	tiktokH := handler.NewTikTokHandler(publishSvc)
+
+	// Comment handler
+	commentH := handler.NewCommentHandler(publishSvc, generateSvc, s.DB)
 
 	// LinkedIn cookies handler
 	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg)
@@ -166,6 +206,8 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		r.Post("/publish", publishH.Post)
 		r.Post("/x/publish", publishH.PostX)
 		r.Post("/linkedin/publish", publishH.PostLinkedIn)
+		r.Post("/youtube/publish", publishH.PostYouTube)
+		r.Post("/tiktok/publish", publishH.PostTikTok)
 
 		r.Post("/schedule", scheduleWriteH.Create)
 		r.Patch("/schedule/{id}/ack", scheduleWriteH.Acknowledge)
@@ -183,6 +225,20 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		r.Post("/generate", generateH.Post)
 		r.Post("/persona/build", buildPersonaH.Post)
 
+		// LinkedIn comments
+		r.Post("/linkedin/comment/generate", commentH.GenerateComment)
+		r.Post("/linkedin/comment", commentH.PostComment)
+
+		// X comments
+		r.Post("/x/comment/generate", commentH.GenerateComment)
+		r.Post("/x/comment", commentH.PostComment)
+
+		// YouTube video upload
+		r.Post("/youtube/upload", youtubeH.Upload)
+
+		// TikTok video upload
+		r.Post("/tiktok/upload", tiktokH.Upload)
+
 		// LinkedIn cookie management
 		r.Post("/linkedin/extract-cookies", linkedinCookiesH.ExtractCookies)
 		r.Post("/linkedin/login-cookies", linkedinCookiesH.LoginCookies)
@@ -198,10 +254,28 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		r.Get("/daemon/batches/{id}", daemonH.GetBatch)
 		r.Post("/daemon/batches/{id}/action", daemonH.BatchAction)
 		r.Post("/daemon/run", daemonH.RunNow)
+		r.Post("/daemon/digest", daemonH.RunDigestNow)
 		r.Get("/daemon/config", daemonH.GetConfig)
 		r.Patch("/daemon/config", daemonH.UpdateConfig)
 		r.Post("/daemon/start", daemonH.StartDaemon)
 		r.Post("/daemon/stop", daemonH.StopDaemon)
+
+		// Repo-to-post endpoints
+		r.Get("/repos", repoH.ListRepos)
+		r.Post("/repos", repoH.AddRepo)
+		r.Get("/repos/available", repoH.ListAvailableRepos)
+		r.Delete("/repos/{id}", repoH.DeleteRepo)
+		r.Patch("/repos/{id}/settings", repoH.UpdateSettings)
+		r.Get("/repos/{id}/commits", repoH.ListCommits)
+		r.Post("/repos/{id}/fetch", repoH.FetchCommits)
+		r.Post("/repos/generate", repoH.GeneratePosts)
+		r.Get("/repos/code-image-options", repoH.ListCodeImageOptions)
+		r.Get("/repos/code-image-previews", repoH.ListCodeImagePreviews)
+		r.Post("/repos/code-image", repoH.RenderCodeImage)
+		r.Get("/repos/commits/{commitId}/image", repoH.GetCodeImage)
+		r.Get("/content/{contentId}/code-image", repoH.GetContentCodeImage)
+		r.Post("/content/{contentId}/re-render-code-image", repoH.ReRenderContentCodeImage)
+		r.Get("/content/{id}/image", historyH.GetContentImage)
 	})
 
 	// Static file serving (SPA fallback)
@@ -285,6 +359,51 @@ func makeDaemonDiscoverFn(database *db.DB, cfg *config.Config) daemon.DiscoverFu
 			ids = append(ids, tp.ID)
 		}
 		return ids, nil
+	}
+}
+
+func makeDaemonCommentGenerateFn(svc *service.GenerateService) daemon.CommentGenerateFunc {
+	return func(ctx context.Context, platform string, trendingIDs []int64, count int) ([]int64, error) {
+		var allIDs []int64
+		for _, tpID := range trendingIDs {
+			contents, err := svc.GenerateComment(ctx, tpID, platform, count)
+			if err != nil {
+				slog.Error("generating comment for trending post", "trending_id", tpID, "error", err)
+				continue
+			}
+			for _, c := range contents {
+				allIDs = append(allIDs, c.ID)
+			}
+		}
+		return allIDs, nil
+	}
+}
+
+func makeDaemonCompeteFn(cfg *config.Config) daemon.CompeteFunc {
+	if cfg.Claude.APIKey == "" {
+		return nil
+	}
+	return func(ctx context.Context, entries []models.CompeteEntry, maxWinners int, platform string) ([]models.CompeteResult, error) {
+		claudeClient := claude.NewClient(cfg.Claude.APIKey, cfg.Claude.Model)
+		gen := generator.NewGenerator(claudeClient)
+		return gen.CompeteContent(ctx, entries, maxWinners, platform)
+	}
+}
+
+func makeDaemonScheduleFn(publishSvc *service.PublishService) daemon.ScheduleFunc {
+	return func(ctx context.Context, contentID int64, scheduledAt time.Time) (string, error) {
+		return publishSvc.Schedule(ctx, contentID, scheduledAt)
+	}
+}
+
+func makeDaemonActionSelectFn(database *db.DB, cfg *config.Config) daemon.ActionSelectFunc {
+	if cfg.Claude.APIKey == "" {
+		return nil
+	}
+	return func(ctx context.Context, posts []models.TrendingPost, platform string) ([]models.ActionSelectResult, error) {
+		claudeClient := claude.NewClient(cfg.Claude.APIKey, cfg.Claude.Model)
+		gen := generator.NewGenerator(claudeClient)
+		return gen.SelectActions(ctx, posts, platform)
 	}
 }
 

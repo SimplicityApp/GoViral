@@ -52,6 +52,18 @@ func (h *DaemonHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 			s := ps.LastRun.Format(time.RFC3339)
 			info.LastRun = &s
 		}
+		if ps.NextDigest != nil {
+			s := ps.NextDigest.Format(time.RFC3339)
+			info.NextDigest = &s
+		}
+		if ps.Paused {
+			info.Paused = true
+			if ps.PausedAt != nil {
+				s := ps.PausedAt.Format(time.RFC3339)
+				info.PausedAt = &s
+			}
+			info.PauseReason = ps.PauseReason
+		}
 		resp.Platforms[p] = info
 	}
 
@@ -184,6 +196,25 @@ func (h *DaemonHandler) RunNow(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "started", "platform": req.Platform})
 }
 
+// RunDigestNow triggers an immediate digest run.
+func (h *DaemonHandler) RunDigestNow(w http.ResponseWriter, r *http.Request) {
+	var req dto.DaemonRunNowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req.Platform = "linkedin"
+	}
+	if req.Platform == "" {
+		req.Platform = "linkedin"
+	}
+
+	if err := h.daemon.RunDigestNow(r.Context(), req.Platform); err != nil {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, err.Error(), reqID)
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "digest_started", "platform": req.Platform})
+}
+
 // GetConfig returns the daemon configuration.
 func (h *DaemonHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	schedules := h.cfg.Daemon.Schedules
@@ -193,13 +224,18 @@ func (h *DaemonHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 
 	resp := dto.DaemonConfigResponse{
 		Daemon: dto.DaemonSettingsResponse{
-			Enabled:       h.cfg.Daemon.Enabled,
-			Schedules:     schedules,
-			MaxPerBatch:   h.cfg.Daemon.MaxPerBatch,
-			AutoSkipAfter: h.cfg.Daemon.AutoSkipAfter,
-			TrendingLimit: h.cfg.Daemon.TrendingLimit,
-			MinLikes:      h.cfg.Daemon.MinLikes,
-			Period:        h.cfg.Daemon.Period,
+			Enabled:        h.cfg.Daemon.Enabled,
+			Schedules:      schedules,
+			MaxPerBatch:    h.cfg.Daemon.MaxPerBatch,
+			AutoSkipAfter:  h.cfg.Daemon.AutoSkipAfter,
+			TrendingLimit:  h.cfg.Daemon.TrendingLimit,
+			MinLikes:       h.cfg.Daemon.MinLikes,
+			Period:         h.cfg.Daemon.Period,
+			DigestMode:          h.cfg.Daemon.DigestMode,
+			DigestSchedule:      h.cfg.Daemon.DigestSchedule,
+			DigestMaxPosts:      h.cfg.Daemon.DigestMaxPosts,
+			AutoPublish:         h.cfg.Daemon.AutoPublish,
+			AutoPublishMaxPosts: h.cfg.Daemon.AutoPublishMaxPosts,
 		},
 		Telegram: dto.TelegramSettingsResponse{
 			BotToken:   maskSecret(h.cfg.Telegram.BotToken),
@@ -246,6 +282,21 @@ func (h *DaemonHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Period != nil {
 		h.cfg.Daemon.Period = *req.Period
+	}
+	if req.DigestMode != nil {
+		h.cfg.Daemon.DigestMode = *req.DigestMode
+	}
+	if req.DigestSchedule != nil {
+		h.cfg.Daemon.DigestSchedule = *req.DigestSchedule
+	}
+	if req.DigestMaxPosts != nil {
+		h.cfg.Daemon.DigestMaxPosts = *req.DigestMaxPosts
+	}
+	if req.AutoPublish != nil {
+		h.cfg.Daemon.AutoPublish = *req.AutoPublish
+	}
+	if req.AutoPublishMaxPosts != nil {
+		h.cfg.Daemon.AutoPublishMaxPosts = *req.AutoPublishMaxPosts
 	}
 	if req.BotToken != nil {
 		h.cfg.Telegram.BotToken = *req.BotToken
@@ -321,6 +372,7 @@ func batchToResponse(b *models.DaemonBatch) dto.DaemonBatchResponse {
 		ApprovalSource:    b.ApprovalSource,
 		ReplyText:         b.ReplyText,
 		ErrorMessage:      b.ErrorMessage,
+		BatchType:         b.BatchType,
 		CreatedAt:         b.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:         b.UpdatedAt.Format(time.RFC3339),
 	}

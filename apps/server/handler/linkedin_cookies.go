@@ -11,7 +11,7 @@ import (
 	"github.com/shuhao/goviral/internal/platform/linkedin"
 )
 
-// LinkedInCookiesHandler manages LinkedIn likit cookie authentication.
+// LinkedInCookiesHandler manages LinkedIn linkitin cookie authentication.
 type LinkedInCookiesHandler struct {
 	cfg *config.Config
 }
@@ -23,10 +23,10 @@ func NewLinkedInCookiesHandler(cfg *config.Config) *LinkedInCookiesHandler {
 
 // ExtractCookies extracts LinkedIn session cookies from Chrome.
 func (h *LinkedInCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.Request) {
-	lc, err := linkedin.NewLikitClient()
+	lc, err := linkedin.NewLinkitinClient()
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "likit unavailable: " + err.Error(),
+			"error": "linkitin unavailable: " + err.Error(),
 		})
 		return
 	}
@@ -64,10 +64,10 @@ func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	lc, err := linkedin.NewLikitClient()
+	lc, err := linkedin.NewLinkitinClient()
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "likit unavailable: " + err.Error(),
+			"error": "linkitin unavailable: " + err.Error(),
 		})
 		return
 	}
@@ -84,9 +84,9 @@ func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// Status checks whether likit cookies are available.
+// Status checks whether linkitin cookies are available.
 func (h *LinkedInCookiesHandler) Status(w http.ResponseWriter, r *http.Request) {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "likit_cookies.json")
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
 	_, err := os.Stat(cookiePath)
 	middleware.WriteJSON(w, http.StatusOK, map[string]bool{
 		"available": err == nil,

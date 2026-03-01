@@ -35,8 +35,9 @@ type ScheduleRequest struct {
 }
 
 type UpdateStatusRequest struct {
-	Status           string  `json:"status,omitempty"`            // "draft", "approved", "posted"
-	GeneratedContent *string `json:"generated_content,omitempty"` // optional content text update
+	Status               string  `json:"status,omitempty"`                // "draft", "approved", "posted"
+	GeneratedContent     *string `json:"generated_content,omitempty"`     // optional content text update
+	CodeImageDescription *string `json:"code_image_description,omitempty"` // optional code image description update
 }
 
 type UpdateConfigRequest struct {
@@ -44,6 +45,9 @@ type UpdateConfigRequest struct {
 	Gemini   *GeminiConfigUpdate   `json:"gemini,omitempty"`
 	X        *XConfigUpdate        `json:"x,omitempty"`
 	LinkedIn *LinkedInConfigUpdate `json:"linkedin,omitempty"`
+	GitHub   *GitHubConfigUpdate   `json:"github,omitempty"`
+	YouTube  *YouTubeConfigUpdate  `json:"youtube,omitempty"`
+	TikTok   *TikTokConfigUpdate   `json:"tiktok,omitempty"`
 	Niches         *[]string `json:"niches,omitempty"`
 	LinkedInNiches *[]string `json:"linkedin_niches,omitempty"`
 }
@@ -73,6 +77,24 @@ type LinkedInConfigUpdate struct {
 	PersonURN    *string `json:"person_urn,omitempty"`
 }
 
+type GitHubConfigUpdate struct {
+	PersonalAccessToken *string `json:"personal_access_token,omitempty"`
+	DefaultOwner        *string `json:"default_owner,omitempty"`
+	DefaultRepo         *string `json:"default_repo,omitempty"`
+}
+
+type YouTubeConfigUpdate struct {
+	ClientID     *string `json:"client_id,omitempty"`
+	ClientSecret *string `json:"client_secret,omitempty"`
+	ChannelID    *string `json:"channel_id,omitempty"`
+}
+
+type TikTokConfigUpdate struct {
+	ClientKey    *string `json:"client_key,omitempty"`
+	ClientSecret *string `json:"client_secret,omitempty"`
+	Username     *string `json:"username,omitempty"`
+}
+
 // --- Daemon requests ---
 
 type BatchActionRequest struct {
@@ -82,19 +104,83 @@ type BatchActionRequest struct {
 	ScheduleAt string           `json:"schedule_at,omitempty"` // RFC3339
 }
 
+type GenerateCommentRequest struct {
+	TrendingPostID int64  `json:"trending_post_id"`
+	Platform       string `json:"platform"`
+	Count          int    `json:"count"`
+}
+
+type PostCommentRequest struct {
+	ContentID int64 `json:"content_id"`
+}
+
+// --- Repo-to-post requests ---
+
+type RepoLinkDTO struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+type UpdateRepoSettingsRequest struct {
+	TargetAudience string        `json:"target_audience"`
+	Links          []RepoLinkDTO `json:"links"`
+}
+
+type AddRepoRequest struct {
+	Owner string `json:"owner"`
+	Name  string `json:"name"`
+}
+
+type FetchCommitsRequest struct {
+	Limit int    `json:"limit"`
+	Since string `json:"since"` // RFC3339, optional
+}
+
+type GenerateRepoPostRequest struct {
+	CommitIDs         []int64 `json:"commit_ids"`
+	TargetPlatform    string  `json:"target_platform,omitempty"`
+	Platform          string  `json:"platform,omitempty"`
+	Count             int     `json:"count"`
+	IncludeCodeImage  bool    `json:"include_code_image"`
+	IncludeCodeImages bool    `json:"include_code_images"`
+	StyleDirection    string  `json:"style_direction"`
+	CodeImageTemplate string  `json:"code_image_template"` // e.g. "github", "macos", "vscode"
+	CodeImageTheme    string  `json:"code_image_theme"`    // e.g. "github-dark", "dracula", "nord"
+}
+
+type RenderCodeImageRequest struct {
+	CommitID int64  `json:"commit_id"`
+	Template string `json:"template"` // e.g. "github", "macos", "vscode"
+	Theme    string `json:"theme"`    // e.g. "github-dark", "dracula", "nord"
+}
+
+type VideoUploadRequest struct {
+	ContentID     int64  `json:"content_id"`
+	VideoPath     string `json:"video_path"`
+	ThumbnailPath string `json:"thumbnail_path,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Description   string `json:"description"`
+	Tags          []string `json:"tags,omitempty"`
+}
+
 type DaemonRunNowRequest struct {
 	Platform string `json:"platform"`
 }
 
 type DaemonConfigUpdateRequest struct {
-	Enabled       *bool              `json:"enabled,omitempty"`
-	Schedules     map[string]string  `json:"schedules,omitempty"`
-	MaxPerBatch   *int               `json:"max_per_batch,omitempty"`
-	AutoSkipAfter *string            `json:"auto_skip_after,omitempty"`
-	TrendingLimit *int               `json:"trending_limit,omitempty"`
-	MinLikes      *int               `json:"min_likes,omitempty"`
-	Period        *string            `json:"period,omitempty"`
-	BotToken      *string            `json:"bot_token,omitempty"`
-	ChatID        *int64             `json:"chat_id,omitempty"`
-	WebhookURL    *string            `json:"webhook_url,omitempty"`
+	Enabled        *bool              `json:"enabled,omitempty"`
+	Schedules      map[string]string  `json:"schedules,omitempty"`
+	MaxPerBatch    *int               `json:"max_per_batch,omitempty"`
+	AutoSkipAfter  *string            `json:"auto_skip_after,omitempty"`
+	TrendingLimit  *int               `json:"trending_limit,omitempty"`
+	MinLikes       *int               `json:"min_likes,omitempty"`
+	Period         *string            `json:"period,omitempty"`
+	DigestMode          *bool              `json:"digest_mode,omitempty"`
+	DigestSchedule      *string            `json:"digest_schedule,omitempty"`
+	DigestMaxPosts      *int               `json:"digest_max_posts,omitempty"`
+	AutoPublish         *bool              `json:"auto_publish,omitempty"`
+	AutoPublishMaxPosts *int               `json:"auto_publish_max_posts,omitempty"`
+	BotToken            *string            `json:"bot_token,omitempty"`
+	ChatID         *int64             `json:"chat_id,omitempty"`
+	WebhookURL     *string            `json:"webhook_url,omitempty"`
 }

@@ -79,6 +79,42 @@ func (h *ConfigWriteHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.GitHub != nil {
+		if req.GitHub.PersonalAccessToken != nil {
+			h.cfg.GitHub.PersonalAccessToken = *req.GitHub.PersonalAccessToken
+		}
+		if req.GitHub.DefaultOwner != nil {
+			h.cfg.GitHub.DefaultOwner = *req.GitHub.DefaultOwner
+		}
+		if req.GitHub.DefaultRepo != nil {
+			h.cfg.GitHub.DefaultRepo = *req.GitHub.DefaultRepo
+		}
+	}
+
+	if req.YouTube != nil {
+		if req.YouTube.ClientID != nil {
+			h.cfg.YouTube.ClientID = *req.YouTube.ClientID
+		}
+		if req.YouTube.ClientSecret != nil {
+			h.cfg.YouTube.ClientSecret = *req.YouTube.ClientSecret
+		}
+		if req.YouTube.ChannelID != nil {
+			h.cfg.YouTube.ChannelID = *req.YouTube.ChannelID
+		}
+	}
+
+	if req.TikTok != nil {
+		if req.TikTok.ClientKey != nil {
+			h.cfg.TikTok.ClientKey = *req.TikTok.ClientKey
+		}
+		if req.TikTok.ClientSecret != nil {
+			h.cfg.TikTok.ClientSecret = *req.TikTok.ClientSecret
+		}
+		if req.TikTok.Username != nil {
+			h.cfg.TikTok.Username = *req.TikTok.Username
+		}
+	}
+
 	if req.Niches != nil {
 		h.cfg.Niches = *req.Niches
 	}

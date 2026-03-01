@@ -39,9 +39,9 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	// At least one field must be provided
-	if req.Status == "" && req.GeneratedContent == nil {
+	if req.Status == "" && req.GeneratedContent == nil && req.CodeImageDescription == nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
-		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "must provide status or generated_content", reqID)
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "must provide status, generated_content, or code_image_description", reqID)
 		return
 	}
 
@@ -76,6 +76,16 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		gc.GeneratedContent = *req.GeneratedContent
+	}
+
+	// Update code image description if provided
+	if req.CodeImageDescription != nil {
+		if err := h.db.UpdateCodeImageDescription(id, *req.CodeImageDescription); err != nil {
+			reqID := middleware.RequestIDFromContext(r.Context())
+			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to update code image description", reqID)
+			return
+		}
+		gc.CodeImageDescription = *req.CodeImageDescription
 	}
 
 	// Update status if provided

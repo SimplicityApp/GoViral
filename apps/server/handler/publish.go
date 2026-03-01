@@ -75,6 +75,62 @@ func (h *PublishHandler) PostX(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// PostYouTube handles YouTube-specific publish requests.
+func (h *PublishHandler) PostYouTube(w http.ResponseWriter, r *http.Request) {
+	var req dto.PublishRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "invalid request body", reqID)
+		return
+	}
+
+	if req.ContentID == 0 {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "content_id is required", reqID)
+		return
+	}
+
+	postIDs, threadParts, err := h.svc.PublishYouTube(r.Context(), req.ContentID)
+	if err != nil {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusOK, dto.PublishResponse{
+		PostIDs:     postIDs,
+		ThreadParts: threadParts,
+	})
+}
+
+// PostTikTok handles TikTok-specific publish requests.
+func (h *PublishHandler) PostTikTok(w http.ResponseWriter, r *http.Request) {
+	var req dto.PublishRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "invalid request body", reqID)
+		return
+	}
+
+	if req.ContentID == 0 {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "content_id is required", reqID)
+		return
+	}
+
+	postIDs, threadParts, err := h.svc.PublishTikTok(r.Context(), req.ContentID)
+	if err != nil {
+		reqID := middleware.RequestIDFromContext(r.Context())
+		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusOK, dto.PublishResponse{
+		PostIDs:     postIDs,
+		ThreadParts: threadParts,
+	})
+}
+
 // PostLinkedIn handles LinkedIn-specific publish requests.
 func (h *PublishHandler) PostLinkedIn(w http.ResponseWriter, r *http.Request) {
 	var req dto.PublishRequest

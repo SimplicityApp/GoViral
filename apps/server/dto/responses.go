@@ -34,6 +34,7 @@ type TrendingPostResponse struct {
 	NicheTags      []string  `json:"niche_tags"`
 	PostedAt       time.Time `json:"posted_at"`
 	FetchedAt      time.Time `json:"fetched_at"`
+	IsActionable   bool      `json:"is_actionable"`
 }
 
 type PersonaResponse struct {
@@ -60,6 +61,15 @@ type GeneratedContentResponse struct {
 	ImagePath        string     `json:"image_path,omitempty"`
 	IsRepost         bool       `json:"is_repost"`
 	QuoteTweetID     string     `json:"quote_tweet_id,omitempty"`
+	IsComment        bool       `json:"is_comment"`
+	SourceType       string     `json:"source_type,omitempty"`
+	SourceCommitID   int64      `json:"source_commit_id,omitempty"`
+	CodeImagePath        string `json:"code_image_path,omitempty"`
+	CodeImageDescription string `json:"code_image_description,omitempty"`
+	VideoPath            string `json:"video_path,omitempty"`
+	ThumbnailPath        string `json:"thumbnail_path,omitempty"`
+	VideoDuration        int    `json:"video_duration,omitempty"`
+	VideoTitle           string `json:"video_title,omitempty"`
 }
 
 type ScheduledPostResponse struct {
@@ -79,6 +89,9 @@ type ConfigResponse struct {
 	Gemini         ConfigGeminiResponse   `json:"gemini"`
 	X              ConfigXResponse        `json:"x"`
 	LinkedIn       ConfigLinkedInResponse `json:"linkedin"`
+	GitHub         ConfigGitHubResponse   `json:"github"`
+	YouTube        ConfigYouTubeResponse  `json:"youtube"`
+	TikTok         ConfigTikTokResponse   `json:"tiktok"`
 	Niches         []string               `json:"niches"`
 	LinkedInNiches []string               `json:"linkedin_niches"`
 }
@@ -104,10 +117,86 @@ type ConfigXResponse struct {
 }
 
 type ConfigLinkedInResponse struct {
+	ClientID        string `json:"client_id"`
+	ClientSecret    string `json:"client_secret"`
+	HasAuth         bool   `json:"has_auth"`
+	HasLinkitinAuth bool   `json:"has_linkitin_auth"`
+}
+
+type ConfigGitHubResponse struct {
+	PersonalAccessToken string `json:"personal_access_token"`
+	DefaultOwner        string `json:"default_owner"`
+	DefaultRepo         string `json:"default_repo"`
+}
+
+type ConfigYouTubeResponse struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	ChannelID    string `json:"channel_id"`
 	HasAuth      bool   `json:"has_auth"`
-	HasLikitAuth bool   `json:"has_likit_auth"`
+}
+
+type ConfigTikTokResponse struct {
+	ClientKey    string `json:"client_key"`
+	ClientSecret string `json:"client_secret"`
+	Username     string `json:"username"`
+	HasAuth      bool   `json:"has_auth"`
+}
+
+type VideoUploadResponse struct {
+	VideoID  string `json:"video_id"`
+	Platform string `json:"platform"`
+	URL      string `json:"url,omitempty"`
+}
+
+// --- Repo-to-post responses ---
+
+type RepoResponse struct {
+	ID             int64          `json:"id"`
+	Owner          string         `json:"owner"`
+	Name           string         `json:"name"`
+	FullName       string         `json:"full_name"`
+	Description    string         `json:"description"`
+	DefaultBranch  string         `json:"default_branch"`
+	Language       string         `json:"language"`
+	AddedAt        string         `json:"added_at"`
+	TargetAudience string         `json:"target_audience"`
+	Links          []RepoLinkDTO `json:"links"`
+}
+
+type RepoCommitResponse struct {
+	ID           int64              `json:"id"`
+	RepoID       int64              `json:"repo_id"`
+	SHA          string             `json:"sha"`
+	Message      string             `json:"message"`
+	AuthorName   string             `json:"author_name"`
+	CommittedAt  string             `json:"committed_at"`
+	Additions    int                `json:"additions"`
+	Deletions    int                `json:"deletions"`
+	FilesChanged int                `json:"files_changed"`
+	DiffSummary  string             `json:"diff_summary"`
+	Files        []RepoFileResponse `json:"files"`
+}
+
+type RepoFileResponse struct {
+	Filename  string `json:"filename"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+}
+
+type AvailableRepoResponse struct {
+	FullName    string `json:"full_name"`
+	Owner       string `json:"owner"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Language    string `json:"language"`
+	Private     bool   `json:"private"`
+}
+
+type CommentResponse struct {
+	CommentURN string                   `json:"comment_urn"`
+	Content    GeneratedContentResponse `json:"content"`
 }
 
 type PublishResponse struct {
@@ -138,9 +227,13 @@ type DaemonStatusResponse struct {
 
 type PlatformDaemonInfo struct {
 	Schedule    string  `json:"schedule"`
-	NextRun     *string `json:"next_run,omitempty"`     // RFC3339
-	LastRun     *string `json:"last_run,omitempty"`     // RFC3339
+	NextRun     *string `json:"next_run,omitempty"`    // RFC3339
+	LastRun     *string `json:"last_run,omitempty"`    // RFC3339
 	LastBatchID *int64  `json:"last_batch_id,omitempty"`
+	NextDigest  *string `json:"next_digest,omitempty"` // RFC3339
+	Paused      bool    `json:"paused,omitempty"`
+	PausedAt    *string `json:"paused_at,omitempty"`    // RFC3339
+	PauseReason string  `json:"pause_reason,omitempty"`
 }
 
 type DaemonBatchResponse struct {
@@ -153,6 +246,7 @@ type DaemonBatchResponse struct {
 	ApprovalSource    string                     `json:"approval_source"`
 	ReplyText         string                     `json:"reply_text"`
 	ErrorMessage      string                     `json:"error_message"`
+	BatchType         string                     `json:"batch_type"`
 	CreatedAt         string                     `json:"created_at"`
 	UpdatedAt         string                     `json:"updated_at"`
 	NotifiedAt        *string                    `json:"notified_at,omitempty"`
@@ -166,13 +260,18 @@ type DaemonConfigResponse struct {
 }
 
 type DaemonSettingsResponse struct {
-	Enabled       bool              `json:"enabled"`
-	Schedules     map[string]string `json:"schedules"`
-	MaxPerBatch   int               `json:"max_per_batch"`
-	AutoSkipAfter string            `json:"auto_skip_after"`
-	TrendingLimit int               `json:"trending_limit"`
-	MinLikes      int               `json:"min_likes"`
-	Period        string            `json:"period"`
+	Enabled        bool              `json:"enabled"`
+	Schedules      map[string]string `json:"schedules"`
+	MaxPerBatch    int               `json:"max_per_batch"`
+	AutoSkipAfter  string            `json:"auto_skip_after"`
+	TrendingLimit  int               `json:"trending_limit"`
+	MinLikes       int               `json:"min_likes"`
+	Period         string            `json:"period"`
+	DigestMode          bool              `json:"digest_mode"`
+	DigestSchedule      string            `json:"digest_schedule"`
+	DigestMaxPosts      int               `json:"digest_max_posts"`
+	AutoPublish         bool              `json:"auto_publish"`
+	AutoPublishMaxPosts int               `json:"auto_publish_max_posts"`
 }
 
 type TelegramSettingsResponse struct {
@@ -180,4 +279,26 @@ type TelegramSettingsResponse struct {
 	ChatID     int64  `json:"chat_id"`
 	WebhookURL string `json:"webhook_url"`
 	Connected  bool   `json:"connected"`
+}
+
+// --- Code image template responses ---
+
+type CodeImageTemplateResponse struct {
+	Name                string `json:"name"`
+	Description         string `json:"description"`
+	SupportsDescription bool   `json:"supports_description"`
+}
+
+type CodeImageThemeResponse struct {
+	Name string `json:"name"`
+}
+
+type CodeImageOptionsResponse struct {
+	Templates []CodeImageTemplateResponse `json:"templates"`
+	Themes    []CodeImageThemeResponse    `json:"themes"`
+}
+
+type CodeImagePreviewsResponse struct {
+	Theme    string            `json:"theme"`
+	Previews map[string]string `json:"previews"` // template_name → full HTML
 }

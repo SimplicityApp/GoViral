@@ -72,6 +72,9 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 		if tp == nil {
 			return nil, fmt.Errorf("trending post %d not found", tpID)
 		}
+		if tp.Platform != targetPlatform {
+			return nil, fmt.Errorf("cannot generate %s content from %s post (trending post %d)", targetPlatform, tp.Platform, tp.ID)
+		}
 
 		progress <- dto.ProgressEvent{
 			Type:       "progress",
@@ -156,6 +159,76 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 		Type:       "complete",
 		Message:    fmt.Sprintf("Generated %d content items", len(allContent)),
 		Percentage: 100,
+	}
+
+	return allContent, nil
+}
+
+// GenerateComment creates comment variations for a trending post.
+func (s *GenerateService) GenerateComment(ctx context.Context, trendingPostID int64, platform string, count int) ([]models.GeneratedContent, error) {
+	if s.cfg.Claude.APIKey == "" {
+		return nil, fmt.Errorf("Claude API key not configured")
+	}
+
+	if platform == "" {
+		platform = "linkedin"
+	}
+	if count <= 0 {
+		count = 3
+	}
+
+	client := claude.NewClient(s.cfg.Claude.APIKey, s.cfg.Claude.Model)
+	gen := generator.NewGenerator(client)
+
+	tp, err := s.db.GetTrendingPostByID(trendingPostID)
+	if err != nil {
+		return nil, fmt.Errorf("getting trending post %d: %w", trendingPostID, err)
+	}
+	if tp == nil {
+		return nil, fmt.Errorf("trending post %d not found", trendingPostID)
+	}
+	if tp.Platform != platform {
+		return nil, fmt.Errorf("cannot create %s comment on %s post (trending post %d)", platform, tp.Platform, trendingPostID)
+	}
+
+	persona, err := s.db.GetPersona(platform)
+	if err != nil {
+		return nil, fmt.Errorf("getting persona: %w", err)
+	}
+	if persona == nil {
+		return nil, fmt.Errorf("no persona found for platform %s; build persona first", platform)
+	}
+
+	results, err := gen.GenerateComment(ctx, models.GenerateCommentRequest{
+		TrendingPost:   *tp,
+		Persona:        *persona,
+		TargetPlatform: platform,
+		Count:          count,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("generating comments for post %d: %w", trendingPostID, err)
+	}
+
+	var allContent []models.GeneratedContent
+	for _, r := range results {
+		gc := models.GeneratedContent{
+			SourceTrendingID: tp.ID,
+			TargetPlatform:   platform,
+			OriginalContent:  tp.Content,
+			GeneratedContent: r.Content,
+			PersonaID:        persona.ID,
+			PromptUsed:       fmt.Sprintf("comment-%s", platform),
+			Status:           "draft",
+			IsComment:        true,
+			QuoteTweetID:     tp.PlatformPostID,
+		}
+
+		id, err := s.db.InsertGeneratedContent(&gc)
+		if err != nil {
+			return nil, fmt.Errorf("saving generated comment: %w", err)
+		}
+		gc.ID = id
+		allContent = append(allContent, gc)
 	}
 
 	return allContent, nil
