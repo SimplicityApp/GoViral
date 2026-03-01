@@ -6,13 +6,13 @@ allowed-tools: Bash
 
 # LinkedIn Operations
 
-Interact with LinkedIn via the likit cookie-based bridge. Commands are sent as JSON via stdin and responses come as JSON on stdout.
+Interact with LinkedIn via the linkitin cookie-based bridge. Commands are sent as JSON via stdin and responses come as JSON on stdout.
 
 ## Configuration
 
 - **Python**: `~/.goviral/venv/bin/python3`
-- **Script**: `internal/platform/linkedin/scripts/likit_bridge.py`
-- **Invocation pattern**: `echo '<json_command>' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py`
+- **Script**: `internal/platform/linkedin/scripts/linkitin_bridge.py`
+- **Invocation pattern**: `echo '<json_command>' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py`
 
 If operations fail with auth errors, tell the user to run `/linkedin-setup`.
 
@@ -23,7 +23,7 @@ If operations fail with auth errors, tell the user to run `/linkedin-setup`.
 Fetch the authenticated user's recent LinkedIn posts.
 
 ```bash
-echo '{"action": "get_my_posts", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_my_posts", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 **Response:**
@@ -54,7 +54,7 @@ echo '{"action": "get_my_posts", "limit": 20}' | "$HOME/.goviral/venv/bin/python
 Fetch the user's LinkedIn feed.
 
 ```bash
-echo '{"action": "get_feed", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_feed", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 Response format is the same as Get My Posts.
@@ -64,7 +64,7 @@ Response format is the same as Get My Posts.
 Find trending posts for a specific topic.
 
 ```bash
-echo '{"action": "get_trending_posts", "topic": "<topic>", "period": "past-24h", "limit": 10, "from_followed": true, "scrolls": 3}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_trending_posts", "topic": "<topic>", "period": "past-24h", "limit": 10, "from_followed": true, "scrolls": 3}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `topic`: keyword/topic to search for (e.g., "AI", "startups")
@@ -75,7 +75,7 @@ echo '{"action": "get_trending_posts", "topic": "<topic>", "period": "past-24h",
 
 **Example:**
 ```bash
-echo '{"action": "get_trending_posts", "topic": "artificial intelligence", "period": "past-week", "limit": 15}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_trending_posts", "topic": "artificial intelligence", "period": "past-week", "limit": 15}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 ### Search Posts
@@ -83,12 +83,12 @@ echo '{"action": "get_trending_posts", "topic": "artificial intelligence", "peri
 Search LinkedIn posts by keywords.
 
 ```bash
-echo '{"action": "search_posts", "keywords": "<search_terms>", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "search_posts", "keywords": "<search_terms>", "limit": 20}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 **Example:**
 ```bash
-echo '{"action": "search_posts", "keywords": "developer productivity tools", "limit": 10}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "search_posts", "keywords": "developer productivity tools", "limit": 10}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 ### Create Post
@@ -96,7 +96,7 @@ echo '{"action": "search_posts", "keywords": "developer productivity tools", "li
 Publish a new LinkedIn post.
 
 ```bash
-echo '{"action": "create_post", "text": "<post_text>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "create_post", "text": "<post_text>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `visibility`: `PUBLIC` (default) or `CONNECTIONS`
@@ -111,7 +111,7 @@ echo '{"action": "create_post", "text": "<post_text>", "visibility": "PUBLIC"}' 
 Upload an image for use in a post. Image data must be base64-encoded.
 
 ```bash
-echo '{"action": "upload_image", "image_data": "<base64_encoded_data>", "filename": "image.png"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "upload_image", "image_data": "<base64_encoded_data>", "filename": "image.png"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 **Response:**
@@ -124,7 +124,7 @@ echo '{"action": "upload_image", "image_data": "<base64_encoded_data>", "filenam
 Create a post with an attached image in a single operation.
 
 ```bash
-echo '{"action": "create_post_with_image", "text": "<post_text>", "image_data": "<base64_encoded_data>", "filename": "image.png", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "create_post_with_image", "text": "<post_text>", "image_data": "<base64_encoded_data>", "filename": "image.png", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 **Response:**
@@ -139,7 +139,7 @@ Repost (share) an existing LinkedIn post from your feed or your own posts.
 > **Important**: `share_urn` is only available from `get_feed()` and `get_my_posts()`. Do NOT use posts from search results or trending posts — they lack the `share_urn` field needed for reposts.
 
 ```bash
-echo '{"action": "repost", "share_urn": "urn:li:share:1234567890", "text": "<optional_comment>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "repost", "share_urn": "urn:li:share:1234567890", "text": "<optional_comment>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `share_urn`: The `urn` field from a post obtained via `get_feed` or `get_my_posts`
@@ -156,7 +156,7 @@ echo '{"action": "repost", "share_urn": "urn:li:share:1234567890", "text": "<opt
 Schedule a post to be published at a future date and time.
 
 ```bash
-echo '{"action": "create_scheduled_post", "text": "<post_text>", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "create_scheduled_post", "text": "<post_text>", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `text`: The post content
@@ -173,7 +173,7 @@ echo '{"action": "create_scheduled_post", "text": "<post_text>", "scheduled_at":
 Schedule a post with an image to be published at a future date and time.
 
 ```bash
-echo '{"action": "create_scheduled_post_with_image", "text": "<post_text>", "image_data": "<base64_encoded_data>", "filename": "image.png", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "create_scheduled_post_with_image", "text": "<post_text>", "image_data": "<base64_encoded_data>", "filename": "image.png", "scheduled_at": "2026-03-01T10:00:00+00:00", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `text`: The post content
@@ -192,7 +192,7 @@ echo '{"action": "create_scheduled_post_with_image", "text": "<post_text>", "ima
 Delete an existing LinkedIn post.
 
 ```bash
-echo '{"action": "delete_post", "post_urn": "urn:li:activity:1234567890"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "delete_post", "post_urn": "urn:li:activity:1234567890"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 - `post_urn`: The URN of the post to delete (from `get_my_posts()`)

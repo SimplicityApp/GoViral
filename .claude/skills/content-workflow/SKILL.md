@@ -28,7 +28,7 @@ Build a writing style profile from the user's existing posts.
 
 **For LinkedIn:**
 ```bash
-echo '{"action": "get_my_posts", "limit": 30}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_my_posts", "limit": 30}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 Collect at least 15-30 posts for a good persona analysis. If the user has fewer posts, use whatever is available.
@@ -58,7 +58,7 @@ Ask the user for their niche topics (e.g., "AI", "startups", "developer tools").
 
 **For LinkedIn:**
 ```bash
-echo '{"action": "get_trending_posts", "topic": "niche1", "period": "past-week", "limit": 10}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "get_trending_posts", "topic": "niche1", "period": "past-week", "limit": 10}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 ### Step 5: Generate content variations
@@ -112,7 +112,7 @@ After the user picks and approves content:
 
 **For LinkedIn — immediate post:**
 ```bash
-echo '{"action": "create_post", "text": "<approved_text>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/likit_bridge.py
+echo '{"action": "create_post", "text": "<approved_text>", "visibility": "PUBLIC"}' | "$HOME/.goviral/venv/bin/python3" internal/platform/linkedin/scripts/linkitin_bridge.py
 ```
 
 ## Quick Mode

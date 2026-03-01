@@ -27,7 +27,7 @@ internal/
   config/        # Config management (~/.goviral/config.yaml)
   db/            # SQLite via modernc.org/sqlite
   platform/x/    # X API + twikit fallback
-  platform/linkedin/  # LinkedIn API + likit fallback
+  platform/linkedin/  # LinkedIn API + linkitin fallback
   thread/        # Thread splitting logic
   trending/      # Trending topic discovery
 pkg/
@@ -44,8 +44,8 @@ pkg/
 - Use `lipgloss` for terminal output styling
 - Config stored at `~/.goviral/config.yaml`
 - Server uses `go-chi/chi/v5` with middleware stack (auth, CORS, error recovery, logging)
-- **Fallback client pattern**: official API client → cookie-based fallback (twikit for X, likit for LinkedIn)
-- Python bridges (`twikit_guest.py`, `likit_bridge.py`) are embedded via `//go:embed` into Go binaries
+- **Fallback client pattern**: official API client → cookie-based fallback (twikit for X, linkitin for LinkedIn)
+- Python bridges (`twikit_guest.py`, `linkitin_bridge.py`) are embedded via `//go:embed` into Go binaries
 - Python venv at `~/.goviral/venv/`
 - Server embeds web assets with `-tags embedweb` build tag (copy `apps/web/dist/` to `apps/server/static/` first)
 - Web dev server proxies `/api` to Go server at `:8080`
@@ -61,7 +61,7 @@ When using Agent Teams, the following ownership boundaries apply:
 
 ### Teammate: platform-apis
 - Owns: `internal/platform/x/`, `internal/platform/linkedin/`
-- Responsibility: X API v2 client, LinkedIn API client, all HTTP calls, rate limiting, fallback clients (twikit/likit), Python bridge scripts
+- Responsibility: X API v2 client, LinkedIn API client, all HTTP calls, rate limiting, fallback clients (twikit/linkitin), Python bridge scripts
 - Must use interfaces from `pkg/models/` for return types
 
 ### Teammate: ai-layer
