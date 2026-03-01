@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 
 const STORAGE_KEY = 'goviral_api_key'
 
@@ -16,7 +17,12 @@ async function checkAuth(): Promise<boolean> {
   }
 }
 
-export function ApiKeyGate({ children }: { children: ReactNode }) {
+export function ApiKeyGate({ children, publicPaths = [] }: { children: ReactNode; publicPaths?: string[] }) {
+  const { pathname } = useLocation()
+
+  if (publicPaths.includes(pathname)) {
+    return <>{children}</>
+  }
   const [status, setStatus] = useState<'checking' | 'ok' | 'needs_key'>('checking')
   const [input, setInput] = useState('')
   const [error, setError] = useState('')

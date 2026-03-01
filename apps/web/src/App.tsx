@@ -19,13 +19,13 @@ import { Privacy } from '@/pages/Privacy'
 function App() {
   return (
     <BrowserRouter>
-      <ApiKeyGate>
+      <ApiKeyGate publicPaths={['/terms', '/privacy']}>
         <Routes>
           <Route path="/" element={<Navigate to={`/${defaultPlatform}/dashboard`} replace />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route element={<RootLayout />}>
             <Route path="/settings" element={<Settings />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/privacy" element={<Privacy />} />
             <Route path="/:platform" element={<PlatformLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
