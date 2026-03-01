@@ -2,11 +2,81 @@ import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
 import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePublishMutation, useScheduleMutation } from '@/hooks/usePublish'
-import { useUpdateContentMutation } from '@/hooks/useHistory'
+import { useUpdateContentMutation, useDeleteContentMutation } from '@/hooks/useHistory'
 import { ThreadPreview } from './ThreadPreview'
 import { ScheduleCalendar } from './ScheduleCalendar'
-import { Send, Clock, Save } from 'lucide-react'
+import { Send, Clock, Save, Trash2, Image } from 'lucide-react'
 import { toast } from 'sonner'
+
+function AttachedImagePreview({ url }: { url: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [errored, setErrored] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    const apiKey = localStorage.getItem('goviral_api_key')
+    const headers: Record<string, string> = {}
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+
+    fetch(url, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error('failed')
+        return res.blob()
+      })
+      .then((blob) => {
+        setBlobUrl(URL.createObjectURL(blob))
+      })
+      .catch(() => setErrored(true))
+
+    return () => {
+      setBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+    }
+  }, [url])
+
+  if (errored) return null
+
+  return (
+    <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)]">
+          <Image size={14} />
+          Image attached
+        </span>
+        {blobUrl && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-[var(--color-accent)] transition-colors hover:underline"
+          >
+            {expanded ? 'Collapse' : 'Preview'}
+          </button>
+        )}
+      </div>
+      {!blobUrl && (
+        <div className="h-24 animate-pulse rounded-lg bg-[var(--color-border)]" />
+      )}
+      {blobUrl && !expanded && (
+        <img
+          src={blobUrl}
+          alt="Attached image"
+          onClick={() => setExpanded(true)}
+          className="max-h-36 cursor-pointer rounded-lg border border-[var(--color-border)] object-contain"
+        />
+      )}
+      {blobUrl && expanded && (
+        <img
+          src={blobUrl}
+          alt="Attached image"
+          className="w-full rounded-lg border border-[var(--color-border)]"
+        />
+      )}
+    </div>
+  )
+}
 
 interface PublishPanelProps {
   items: GeneratedContent[]
@@ -23,8 +93,16 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
   const publishMutation = usePublishMutation(activePlatform)
   const scheduleMutation = useScheduleMutation()
   const updateContentMutation = useUpdateContentMutation()
+  const deleteContentMutation = useDeleteContentMutation()
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
   const selected = items.find((i) => i.id === selectedId)
+
+  const imageUrl = selected?.code_image_path
+    ? `/api/v1/content/${selected.id}/code-image`
+    : selected?.image_path
+      ? `/api/v1/content/${selected.id}/image`
+      : null
 
   // Reset editedContent when selection changes
   useEffect(() => {
@@ -32,6 +110,17 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
   }, [selected?.id, selected?.generated_content])
 
   const hasUnsavedChanges = selected && editedContent !== selected.generated_content
+
+  const handleDelete = (id: number) => {
+    deleteContentMutation.mutate(id, {
+      onSuccess: () => {
+        toast.success('Content deleted')
+        if (selectedId === id) setSelectedId(null)
+        setConfirmDeleteId(null)
+      },
+      onError: () => toast.error('Failed to delete content'),
+    })
+  }
 
   const handleSave = () => {
     if (!selectedId || !hasUnsavedChanges) return
@@ -80,22 +169,56 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
               {activePlatform === 'linkedin' ? 'Repost' : 'Quote Tweet'}
             </span>
           )}
+          {selected?.is_comment && (
+            <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+              Comment
+            </span>
+          )}
         </label>
         <div className="flex flex-col gap-2">
           {items.map((item) => (
-            <button
+            <div
               key={item.id}
-              onClick={() => setSelectedId(item.id)}
-              className={`rounded-[var(--radius-card)] border p-3 text-left text-sm transition-colors ${
+              className={`flex items-center gap-2 rounded-[var(--radius-card)] border p-3 text-sm transition-colors ${
                 selectedId === item.id
                   ? 'border-[var(--color-accent)] bg-[var(--color-card)]'
                   : 'border-[var(--color-border)] bg-[var(--color-card)] hover:bg-[var(--color-card-hover)]'
               }`}
             >
-              <p className="line-clamp-2 text-[var(--color-text)]">
-                {item.generated_content}
-              </p>
-            </button>
+              <button
+                onClick={() => setSelectedId(item.id)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <p className="line-clamp-2 text-[var(--color-text)]">
+                  {item.generated_content}
+                </p>
+              </button>
+              {confirmDeleteId === item.id ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    disabled={deleteContentMutation.isPending}
+                    className="rounded-[var(--radius-button)] bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+                  >
+                    {deleteContentMutation.isPending ? '...' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="rounded-[var(--radius-button)] px-2 py-1 text-xs text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-card-hover)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteId(item.id)}
+                  className="shrink-0 rounded-[var(--radius-button)] p-1.5 text-[var(--color-text-secondary)] transition-colors hover:bg-red-500/10 hover:text-red-400"
+                  title="Delete content"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -119,6 +242,12 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
               <Save size={14} />
               {updateContentMutation.isPending ? 'Saving...' : 'Save changes'}
             </button>
+          )}
+          {imageUrl && <AttachedImagePreview url={imageUrl} />}
+          {selected?.code_image_description && (
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              Image: {selected.code_image_description}
+            </p>
           )}
         </>
       )}

@@ -112,10 +112,11 @@ export const apiClient = {
 
       if (!response.ok || !response.body) {
         let errBody: unknown
+        const raw = await response.text()
         try {
-          errBody = await response.json()
+          errBody = JSON.parse(raw)
         } catch {
-          errBody = await response.text()
+          errBody = raw
         }
         throw new ApiError(response.status, errBody)
       }

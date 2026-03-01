@@ -9,6 +9,8 @@ import {
   Settings,
   X,
   Bot,
+  Code,
+  Video,
 } from 'lucide-react'
 import { PlatformSwitcher } from './PlatformSwitcher'
 import { useUIStore } from '@/stores/ui-store'
@@ -22,6 +24,8 @@ const platformNavItems = [
   { path: 'history', label: 'History', icon: Clock },
   { path: 'publish', label: 'Publish', icon: Send },
   { path: 'autopilot', label: 'Autopilot', icon: Bot },
+  { path: 'code-to-post', label: 'Code to Post', icon: Code },
+  { path: 'video', label: 'Video', icon: Video },
 ]
 
 export function Sidebar() {

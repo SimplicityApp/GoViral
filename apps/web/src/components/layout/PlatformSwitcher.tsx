@@ -1,11 +1,13 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Twitter, Linkedin } from 'lucide-react'
+import { Twitter, Linkedin, Youtube, Music } from 'lucide-react'
 import { platforms } from '@/lib/platforms'
 import { usePlatformStore } from '@/stores/platform-store'
 
 const iconMap: Record<string, typeof Twitter> = {
   Twitter,
   Linkedin,
+  Youtube,
+  Music,
 }
 
 export function PlatformSwitcher() {
@@ -27,7 +29,7 @@ export function PlatformSwitcher() {
   }
 
   return (
-    <div className="flex border-b border-[var(--color-border)]">
+    <div className="flex gap-1 px-2 border-b border-[var(--color-border)]">
       {platforms.map((platform) => {
         const Icon = iconMap[platform.icon]
         const isActive = activePlatform === platform.id
@@ -35,14 +37,15 @@ export function PlatformSwitcher() {
           <button
             key={platform.id}
             onClick={() => handleSwitch(platform.id)}
-            className={`flex flex-1 items-center justify-center gap-2 px-3 py-3 text-sm font-medium transition-colors ${
+            title={platform.name}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors ${
               isActive
                 ? 'border-b-2 border-[var(--color-accent)] text-[var(--color-accent)]'
                 : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'
             }`}
           >
             {Icon && <Icon size={16} />}
-            {platform.name}
+            <span className="truncate">{platform.name}</span>
           </button>
         )
       })}

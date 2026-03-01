@@ -48,6 +48,11 @@ interface FormState {
   trending_limit: number
   min_likes: number
   period: string
+  digest_mode: boolean
+  digest_schedule: string
+  digest_max_posts: number
+  auto_publish: boolean
+  auto_publish_max_posts: number
   bot_token: string
   chat_id: number
   webhook_url: string
@@ -62,6 +67,11 @@ function configToForm(config: DaemonConfig): FormState {
     trending_limit: config.daemon.trending_limit,
     min_likes: config.daemon.min_likes,
     period: config.daemon.period,
+    digest_mode: config.daemon.digest_mode,
+    digest_schedule: config.daemon.digest_schedule,
+    digest_max_posts: config.daemon.digest_max_posts,
+    auto_publish: config.daemon.auto_publish,
+    auto_publish_max_posts: config.daemon.auto_publish_max_posts,
     bot_token: config.telegram.bot_token,
     chat_id: config.telegram.chat_id,
     webhook_url: config.telegram.webhook_url,
@@ -80,6 +90,11 @@ export function DaemonConfigPanel() {
     trending_limit: 10,
     min_likes: 100,
     period: 'day',
+    digest_mode: false,
+    digest_schedule: '0 21 * * *',
+    digest_max_posts: 5,
+    auto_publish: false,
+    auto_publish_max_posts: 1,
     bot_token: '',
     chat_id: 0,
     webhook_url: '',
@@ -101,6 +116,11 @@ export function DaemonConfigPanel() {
         trending_limit: form.trending_limit,
         min_likes: form.min_likes,
         period: form.period,
+        digest_mode: form.digest_mode,
+        digest_schedule: form.digest_schedule,
+        digest_max_posts: form.digest_max_posts,
+        auto_publish: form.auto_publish,
+        auto_publish_max_posts: form.auto_publish_max_posts,
       },
       telegram: {
         bot_token: form.bot_token,
@@ -238,6 +258,106 @@ export function DaemonConfigPanel() {
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      {/* Digest mode section */}
+      <div className="mb-6 border-t border-[var(--color-border)] pt-5">
+        <h3 className="mb-4 text-sm font-semibold text-[var(--color-text)]">Digest Mode</h3>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm font-medium text-[var(--color-text)]">Digest Mode</label>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                Accumulate trending posts, then rank and send the best ones once per day
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.digest_mode}
+              onClick={() => setForm((f) => ({ ...f, digest_mode: !f.digest_mode }))}
+              className={`relative h-5 w-9 rounded-full transition-colors ${form.digest_mode ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.digest_mode ? 'translate-x-4' : 'translate-x-0'}`}
+              />
+            </button>
+          </div>
+
+          {form.digest_mode && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">
+                    Digest Schedule
+                  </label>
+                  <input
+                    type="text"
+                    value={form.digest_schedule}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, digest_schedule: e.target.value }))
+                    }
+                    placeholder="0 21 * * *"
+                    className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">
+                    Max posts per digest
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.digest_max_posts}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, digest_max_posts: Number(e.target.value) }))
+                    }
+                    className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                  />
+                </div>
+              </div>
+
+              {/* Auto-Publish */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium text-[var(--color-text)]">Auto-Publish</label>
+                  <p className="text-xs text-[var(--color-text-secondary)]">
+                    Let AI select the best action and auto-publish without approval
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.auto_publish}
+                  onClick={() => setForm((f) => ({ ...f, auto_publish: !f.auto_publish }))}
+                  className={`relative h-5 w-9 rounded-full transition-colors ${form.auto_publish ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.auto_publish ? 'translate-x-4' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+
+              {form.auto_publish && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">
+                    Max auto-publish per digest
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={form.auto_publish_max_posts}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, auto_publish_max_posts: Number(e.target.value) }))
+                    }
+                    className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)]"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 

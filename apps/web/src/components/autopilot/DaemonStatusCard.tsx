@@ -99,6 +99,12 @@ export function DaemonStatusCard({
                   <span>Last run</span>
                   <span className="text-[var(--color-text)]">{formatTime(info.last_run)}</span>
                 </div>
+                {info.next_digest && (
+                  <div className="flex items-center justify-between">
+                    <span>Next digest</span>
+                    <span className="text-amber-400">{formatTime(info.next_digest)}</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}

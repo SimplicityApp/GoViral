@@ -26,6 +26,11 @@ export interface TrendingPost {
   media: MediaAttachment[]
   posted_at: string
   fetched_at: string
+  is_actionable: boolean
+  video_url: string
+  view_count: number
+  duration: number
+  is_video: boolean
 }
 
 export interface MediaAttachment {
@@ -73,6 +78,15 @@ export interface GeneratedContent {
   image_path: string
   is_repost: boolean
   quote_tweet_id: string
+  is_comment: boolean
+  source_type: string
+  source_commit_id: number
+  code_image_path: string
+  code_image_description: string
+  video_path: string
+  thumbnail_path: string
+  video_duration: number
+  video_title: string
 }
 
 export interface ScheduledPost {
@@ -104,6 +118,7 @@ export interface DaemonBatch {
   approval_source: string
   reply_text: string
   error_message: string
+  batch_type: string
   created_at: string
   updated_at: string
   notified_at: string | null
@@ -121,6 +136,7 @@ export interface PlatformDaemonStatus {
   next_run: string | null
   last_run: string | null
   last_batch_id: number | null
+  next_digest: string | null
 }
 
 export interface DaemonConfig {
@@ -132,6 +148,11 @@ export interface DaemonConfig {
     trending_limit: number
     min_likes: number
     period: string
+    digest_mode: boolean
+    digest_schedule: string
+    digest_max_posts: number
+    auto_publish: boolean
+    auto_publish_max_posts: number
   }
   telegram: {
     bot_token: string
@@ -139,4 +160,72 @@ export interface DaemonConfig {
     webhook_url: string
     connected: boolean
   }
+}
+
+export interface AvailableRepo {
+  full_name: string
+  owner: string
+  name: string
+  description: string
+  language: string
+  private: boolean
+}
+
+export interface RepoLink {
+  label: string
+  url: string
+}
+
+export interface Repo {
+  id: number
+  owner: string
+  name: string
+  full_name: string
+  description: string
+  default_branch: string
+  language: string
+  added_at: string
+  target_audience: string
+  links: RepoLink[]
+}
+
+export interface RepoCommit {
+  id: number
+  repo_id: number
+  sha: string
+  message: string
+  author_name: string
+  committed_at: string
+  additions: number
+  deletions: number
+  files_changed: number
+  diff_summary: string
+  files: RepoFileChange[]
+}
+
+export interface RepoFileChange {
+  filename: string
+  status: string
+  additions: number
+  deletions: number
+}
+
+export interface CodeImageTemplate {
+  name: string
+  description: string
+  supports_description: boolean
+}
+
+export interface CodeImageTheme {
+  name: string
+}
+
+export interface CodeImageOptions {
+  templates: CodeImageTemplate[]
+  themes: CodeImageTheme[]
+}
+
+export interface CodeImagePreviewsResponse {
+  theme: string
+  previews: Record<string, string>
 }

@@ -5,12 +5,11 @@ import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useTrendingQuery } from '@/hooks/useTrending'
 import { useGenerateMutation } from '@/hooks/useGenerate'
 import { useUpdateStatusMutation } from '@/hooks/useHistory'
+import { useRepoGenerate } from '@/hooks/useRepoGenerate'
 import { PostSelector } from './PostSelector'
 import { GenerateSettings, type GenerateConfig } from './GenerateSettings'
 import { VariationCard } from './VariationCard'
 import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
-
-const steps = ['Select Posts', 'Configure', 'Generating', 'Review']
 
 export function GenerateWorkflow() {
   const activePlatform = usePlatformParam()
@@ -19,18 +18,30 @@ export function GenerateWorkflow() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [results, setResults] = useState<GeneratedContent[]>([])
   const [isRepost, setIsRepost] = useState(false)
+  const [sourceType, setSourceType] = useState<'trending' | 'code'>('trending')
+  const [commitIds, setCommitIds] = useState<number[]>([])
+
+  const steps =
+    sourceType === 'code'
+      ? ['Configure', 'Generating', 'Review']
+      : ['Select Posts', 'Configure', 'Generating', 'Review']
+
   const platformDefaultChars = activePlatform === 'linkedin' ? 2000 : 280
   const [config, setConfig] = useState<GenerateConfig>({
     target_platform: activePlatform,
     count: 3,
     max_chars: platformDefaultChars,
     force_image: false,
+    include_code_images: true,
   })
 
   // Read URL search params on mount
   useEffect(() => {
     const idsParam = searchParams.get('ids')
     const stepParam = searchParams.get('step')
+    const sourceParam = searchParams.get('source')
+    const commitIdsParam = searchParams.get('commitIds')
+
     if (idsParam) {
       const ids = idsParam
         .split(',')
@@ -42,7 +53,7 @@ export function GenerateWorkflow() {
     }
     if (stepParam) {
       const s = Number(stepParam)
-      if (!isNaN(s) && s >= 0 && s < steps.length) {
+      if (!isNaN(s) && s >= 0) {
         setStep(s)
       }
     }
@@ -50,7 +61,18 @@ export function GenerateWorkflow() {
     if (repostParam === 'true') {
       setIsRepost(true)
     }
-    if (idsParam || stepParam) {
+    if (sourceParam === 'code' && commitIdsParam) {
+      const cIds = commitIdsParam
+        .split(',')
+        .map(Number)
+        .filter((n) => !isNaN(n) && n > 0)
+      if (cIds.length > 0) {
+        setSourceType('code')
+        setCommitIds(cIds)
+        setStep(0) // Configure step for code source
+      }
+    }
+    if (idsParam || stepParam || sourceParam) {
       setSearchParams({}, { replace: true })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -65,6 +87,7 @@ export function GenerateWorkflow() {
     platform: activePlatform,
   })
   const generate = useGenerateMutation()
+  const repoGenerate = useRepoGenerate()
   const updateStatus = useUpdateStatusMutation()
 
   const toggleSelect = (id: number) => {
@@ -76,23 +99,47 @@ export function GenerateWorkflow() {
     })
   }
 
+  const generatingStep = sourceType === 'code' ? 1 : 2
+  const reviewStep = sourceType === 'code' ? 2 : 3
+  const configStep = sourceType === 'code' ? 0 : 1
+
   const handleGenerate = () => {
-    setStep(2)
-    generate.mutate({
-      trending_post_ids: Array.from(selectedIds),
-      target_platform: config.target_platform,
-      count: config.count,
-      max_chars: config.max_chars,
-      force_image: config.force_image,
-      is_repost: isRepost,
-    })
+    setStep(generatingStep)
+    if (sourceType === 'code') {
+      repoGenerate.mutate({
+        commit_ids: commitIds,
+        platform: config.target_platform,
+        count: config.count,
+        style_direction: config.style_direction || undefined,
+        include_code_images: config.include_code_images,
+        code_image_template: config.code_image_template || undefined,
+        code_image_theme: config.code_image_theme || undefined,
+      })
+    } else {
+      generate.mutate({
+        trending_post_ids: Array.from(selectedIds),
+        target_platform: config.target_platform,
+        count: config.count,
+        max_chars: config.max_chars,
+        force_image: config.force_image,
+        is_repost: isRepost,
+      })
+    }
   }
 
   // Move to review when generation completes
-  if (step === 2 && !generate.isGenerating && generate.result) {
+  if (sourceType === 'trending' && step === generatingStep && !generate.isGenerating && generate.result) {
     setResults(generate.result)
-    setStep(3)
+    setStep(reviewStep)
   }
+
+  if (sourceType === 'code' && step === generatingStep && !repoGenerate.isLoading && repoGenerate.result) {
+    setResults(repoGenerate.result)
+    setStep(reviewStep)
+  }
+
+  const activeProgress = sourceType === 'code' ? repoGenerate.progress : generate.progress
+  const activeError = sourceType === 'code' ? repoGenerate.error : generate.error
 
   return (
     <div>
@@ -126,14 +173,14 @@ export function GenerateWorkflow() {
       {isRepost && (
         <div className="mb-4 flex items-center gap-2">
           <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">
-            Quote Tweet mode
+            {activePlatform === 'linkedin' ? 'Repost mode' : 'Quote Tweet mode'}
           </span>
         </div>
       )}
 
       {/* Navigation — between step indicator and step content */}
       <div className="mb-6 flex items-center justify-between">
-        {step > 0 && step < 2 ? (
+        {step > 0 && step < generatingStep && sourceType === 'trending' ? (
           <button
             onClick={() => setStep(step - 1)}
             className="flex items-center gap-1.5 rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
@@ -145,7 +192,12 @@ export function GenerateWorkflow() {
           <div />
         )}
         <div className="flex items-center gap-3">
-          {step === 0 && selectedIds.size > 0 && (
+          {step === configStep && sourceType === 'code' && commitIds.length > 0 && (
+            <span className="text-sm text-[var(--color-accent)]">
+              {commitIds.length} commit{commitIds.length > 1 ? 's' : ''} selected
+            </span>
+          )}
+          {step === 0 && sourceType === 'trending' && selectedIds.size > 0 && (
             <>
               <span className="text-sm text-[var(--color-accent)]">
                 {selectedIds.size} post{selectedIds.size > 1 ? 's' : ''} selected
@@ -159,7 +211,7 @@ export function GenerateWorkflow() {
               </button>
             </>
           )}
-          {step === 1 && (
+          {step === configStep && (
             <button
               onClick={handleGenerate}
               className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
@@ -168,12 +220,16 @@ export function GenerateWorkflow() {
               Generate
             </button>
           )}
-          {step === 3 && (
+          {step === reviewStep && (
             <button
               onClick={() => {
                 setStep(0)
                 setSelectedIds(new Set())
                 setResults([])
+                if (sourceType === 'code') {
+                  setSourceType('trending')
+                  setCommitIds([])
+                }
               }}
               className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
             >
@@ -184,7 +240,7 @@ export function GenerateWorkflow() {
       </div>
 
       {/* Step content */}
-      {step === 0 && (
+      {step === 0 && sourceType === 'trending' && (
         <PostSelector
           posts={trending}
           isLoading={trendingLoading}
@@ -193,38 +249,38 @@ export function GenerateWorkflow() {
         />
       )}
 
-      {step === 1 && (
-        <div className="max-w-md">
-          <GenerateSettings config={config} onChange={setConfig} isRepost={isRepost} />
+      {step === configStep && (
+        <div className={sourceType === 'code' ? 'max-w-2xl' : 'max-w-md'}>
+          <GenerateSettings config={config} onChange={setConfig} isRepost={isRepost} sourceType={sourceType} />
         </div>
       )}
 
-      {step === 2 && (
+      {step === generatingStep && (
         <div className="flex flex-col items-center py-16">
           <Sparkles size={48} className="mb-4 animate-pulse text-[var(--color-accent)]" />
           <h3 className="mb-2 text-lg font-semibold text-[var(--color-text)]">
             Generating content...
           </h3>
-          {generate.progress && (
+          {activeProgress && (
             <>
               <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
-                {generate.progress.message}
+                {activeProgress.message}
               </p>
               <div className="h-2 w-64 rounded-full bg-[var(--color-border)]">
                 <div
                   className="h-2 rounded-full bg-[var(--color-accent)] transition-all"
-                  style={{ width: `${generate.progress.percentage}%` }}
+                  style={{ width: `${activeProgress.percentage}%` }}
                 />
               </div>
             </>
           )}
-          {generate.error && (
-            <p className="mt-4 text-sm text-red-400">{generate.error}</p>
+          {activeError && (
+            <p className="mt-4 text-sm text-red-400">{activeError}</p>
           )}
         </div>
       )}
 
-      {step === 3 && (
+      {step === reviewStep && (
         <div className="flex flex-col gap-4">
           {results.map((content) => (
             <VariationCard

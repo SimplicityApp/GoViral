@@ -10,8 +10,7 @@ export function Publish() {
   const [searchParams] = useSearchParams()
   const platform = usePlatformParam()
   const preselectedId = searchParams.get('id') ? Number(searchParams.get('id')) : undefined
-  const { data: approvedRaw, isLoading } = useHistoryQuery('approved')
-  const approved = approvedRaw?.filter((i) => i.target_platform === platform)
+  const { data: approved, isLoading } = useHistoryQuery('approved', undefined, platform)
 
   if (isLoading) return <LoadingSpinner />
 

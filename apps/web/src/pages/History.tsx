@@ -11,8 +11,7 @@ export function History() {
   const platform = usePlatformParam()
   const [activeStatus, setActiveStatus] = useState('all')
   const statusFilter = activeStatus === 'all' ? undefined : activeStatus
-  const { data: itemsRaw, isLoading } = useHistoryQuery(statusFilter)
-  const items = itemsRaw?.filter((i) => i.target_platform === platform)
+  const { data: items, isLoading } = useHistoryQuery(statusFilter, undefined, platform)
   const updateStatus = useUpdateStatusMutation()
   const deleteContent = useDeleteContentMutation()
 

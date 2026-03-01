@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { TrendingPost } from '@/lib/types'
+import { toast } from 'sonner'
+import type { TrendingPost, GeneratedContent } from '@/lib/types'
 import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { useTrendingQuery, useDiscoverMutation } from '@/hooks/useTrending'
 import { useConfigQuery } from '@/hooks/useConfig'
+import { useGenerateCommentMutation, usePostCommentMutation } from '@/hooks/useComment'
 import { TrendingFilters } from '@/components/trending/TrendingFilters'
 import { TrendingList } from '@/components/trending/TrendingList'
 import { Sparkles } from 'lucide-react'
@@ -18,6 +20,8 @@ export function Trending() {
   const [minLikes, setMinLikes] = useState('')
   const [niche, setNiche] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [commentingPost, setCommentingPost] = useState<TrendingPost | null>(null)
+  const [commentVariations, setCommentVariations] = useState<GeneratedContent[]>([])
 
   const { data: posts, isLoading } = useTrendingQuery({
     platform: platform,
@@ -26,6 +30,8 @@ export function Trending() {
     niche: niche || undefined,
   })
   const discoverMutation = useDiscoverMutation()
+  const generateComment = useGenerateCommentMutation(platform)
+  const postComment = usePostCommentMutation(platform)
 
   const handleDiscover = () => {
     discoverMutation.mutate({
@@ -46,7 +52,47 @@ export function Trending() {
   }
 
   const handleRepost = (post: TrendingPost) => {
+    if (post.platform !== platform) {
+      toast.error(`This post is from ${post.platform}, not ${platform}`)
+      return
+    }
     navigate(`/${platform}/generate?ids=${post.id}&step=1&repost=true`)
+  }
+
+  const handleComment = (post: TrendingPost) => {
+    if (post.platform !== platform) {
+      toast.error(`This post is from ${post.platform}, not ${platform}`)
+      return
+    }
+    setCommentingPost(post)
+    generateComment.mutate(
+      { trending_post_id: post.id, platform },
+      {
+        onSuccess: (data) => {
+          setCommentVariations(data)
+        },
+        onError: (err) => {
+          toast.error(`Failed to generate comments: ${err.message}`)
+          setCommentingPost(null)
+        },
+      }
+    )
+  }
+
+  const handlePostComment = (contentId: number) => {
+    postComment.mutate(
+      { content_id: contentId },
+      {
+        onSuccess: (data) => {
+          toast.success(`Comment posted! URN: ${data.comment_urn}`)
+          setCommentingPost(null)
+          setCommentVariations([])
+        },
+        onError: (err) => {
+          toast.error(`Failed to post comment: ${err.message}`)
+        },
+      }
+    )
   }
 
   const handleConfigure = () => {
@@ -107,7 +153,59 @@ export function Trending() {
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
         onRepost={handleRepost}
+        onComment={handleComment}
       />
+
+      {commentingPost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-lg rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--color-text)]">
+                Comment on @{commentingPost.author_username}'s post
+              </h3>
+              <button
+                onClick={() => { setCommentingPost(null); setCommentVariations([]) }}
+                className="text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-4 max-h-24 overflow-y-auto rounded-lg bg-[var(--color-card)] p-3 text-xs text-[var(--color-text-secondary)]">
+              {commentingPost.content.slice(0, 200)}
+              {commentingPost.content.length > 200 ? '...' : ''}
+            </div>
+
+            {generateComment.isPending && (
+              <div className="py-8 text-center text-sm text-[var(--color-text-secondary)]">
+                Generating comment variations...
+              </div>
+            )}
+
+            {commentVariations.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {commentVariations.map((cv) => (
+                  <div
+                    key={cv.id}
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3"
+                  >
+                    <p className="mb-2 whitespace-pre-wrap text-sm text-[var(--color-text)]">
+                      {cv.generated_content}
+                    </p>
+                    <button
+                      onClick={() => handlePostComment(cv.id)}
+                      disabled={postComment.isPending}
+                      className="rounded-[var(--radius-button)] bg-[var(--color-accent)] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+                    >
+                      {postComment.isPending ? 'Posting...' : 'Post Comment'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -23,10 +23,13 @@ export interface AppConfig {
     client_id: string
     client_secret: string
     has_auth: boolean
-    has_likit_auth: boolean
+    has_linkitin_auth: boolean
   }
   niches: string[]
   linkedin_niches: string[]
+  github?: {
+    personal_access_token: string
+  }
 }
 
 export interface UpdateConfigPayload {
@@ -43,6 +46,7 @@ export interface UpdateConfigPayload {
   linkedin?: { client_id?: string; client_secret?: string }
   niches?: string[]
   linkedin_niches?: string[]
+  github?: { personal_access_token?: string }
 }
 
 export function useConfigQuery() {

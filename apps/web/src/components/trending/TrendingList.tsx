@@ -12,9 +12,10 @@ interface TrendingListProps {
   selectedIds: Set<number>
   onToggleSelect: (id: number) => void
   onRepost?: (post: TrendingPost) => void
+  onComment?: (post: TrendingPost) => void
 }
 
-export function TrendingList({ posts, isLoading, selectedIds, onToggleSelect, onRepost }: TrendingListProps) {
+export function TrendingList({ posts, isLoading, selectedIds, onToggleSelect, onRepost, onComment }: TrendingListProps) {
   const { page, totalPages, pageItems, nextPage, prevPage, hasNext, hasPrev } = usePagination(
     posts ?? []
   )
@@ -41,6 +42,7 @@ export function TrendingList({ posts, isLoading, selectedIds, onToggleSelect, on
           selected={selectedIds.has(post.id)}
           onSelect={() => onToggleSelect(post.id)}
           onRepost={onRepost ? () => onRepost(post) : undefined}
+          onComment={onComment ? () => onComment(post) : undefined}
         />
       ))}
       <Pagination

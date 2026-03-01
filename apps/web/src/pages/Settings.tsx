@@ -208,6 +208,7 @@ export function Settings() {
     x_client_secret: '',
     linkedin_client_id: '',
     linkedin_client_secret: '',
+    github_pat: '',
     niches: [] as string[],
     linkedin_niches: [] as string[],
   })
@@ -223,6 +224,7 @@ export function Settings() {
         x_client_secret: config.x.client_secret || '',
         linkedin_client_id: config.linkedin.client_id || '',
         linkedin_client_secret: config.linkedin.client_secret || '',
+        github_pat: config.github?.personal_access_token || '',
         niches: config.niches || [],
         linkedin_niches: config.linkedin_niches || [],
       })
@@ -256,6 +258,7 @@ export function Settings() {
         client_id: form.linkedin_client_id,
         client_secret: form.linkedin_client_secret,
       },
+      github: { personal_access_token: form.github_pat },
       niches: form.niches,
       linkedin_niches: form.linkedin_niches,
     }
@@ -361,13 +364,13 @@ export function Settings() {
           >
             Connect LinkedIn
           </a>
-          {config?.linkedin.has_likit_auth ? (
+          {config?.linkedin.has_linkitin_auth ? (
             <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
-              Likit Connected
+              Linkitin Connected
             </span>
           ) : (
             <span className="rounded-full bg-gray-500/15 px-3 py-1 text-xs font-medium text-gray-400">
-              Likit Not Set Up
+              Linkitin Not Set Up
             </span>
           )}
         </div>
@@ -390,6 +393,22 @@ export function Settings() {
           >
             {extractingCookies ? 'Extracting...' : 'Extract Cookies from Chrome'}
           </button>
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          GitHub
+        </h3>
+        <div className="flex flex-col gap-4">
+          <MaskedInput
+            label="GitHub Personal Access Token"
+            value={form.github_pat}
+            onChange={(v) => setForm((f) => ({ ...f, github_pat: v }))}
+          />
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            Used to read repository commits for the Code to Post feature. Requires repo read scope.
+          </p>
         </div>
       </section>
 

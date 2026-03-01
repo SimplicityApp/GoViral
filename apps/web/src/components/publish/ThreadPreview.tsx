@@ -29,17 +29,19 @@ export function ThreadPreview({ content, editable, onChange, isRepost, quoteTwee
           </div>
         )}
         <h4 className="text-sm font-medium text-[var(--color-text-secondary)]">
-          Preview (Quote Tweet)
+          Preview ({activePlatform === 'linkedin' ? 'Repost' : 'Quote Tweet'})
         </h4>
         <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <p className="whitespace-pre-wrap text-sm text-[var(--color-text)]">{content}</p>
           {quoteTweetId && (
             <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs text-[var(--color-text-secondary)]">
-              Quoting: https://x.com/i/status/{quoteTweetId}
+              {activePlatform === 'linkedin'
+                ? `Quoting: https://www.linkedin.com/feed/update/${quoteTweetId}/`
+                : `Quoting: https://x.com/i/status/${quoteTweetId}`}
             </div>
           )}
           <div className="mt-2 text-right text-xs text-[var(--color-text-secondary)]">
-            {content.length}/280
+            {content.length}/{maxChars}
           </div>
         </div>
       </div>

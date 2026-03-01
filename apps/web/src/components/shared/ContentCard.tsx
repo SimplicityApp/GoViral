@@ -1,7 +1,7 @@
 import type { GeneratedContent } from '@/lib/types'
 import { StatusBadge } from './StatusBadge'
 import { formatRelativeTime } from '@/lib/format'
-import { Check, CheckSquare, Pencil, Send, Square, Trash2 } from 'lucide-react'
+import { CheckSquare, Pencil, Send, Square, Trash2 } from 'lucide-react'
 
 interface ContentCardProps {
   content: GeneratedContent
@@ -38,6 +38,11 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete, isSelec
               REPOST
             </span>
           )}
+          {content.is_comment && (
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+              COMMENT
+            </span>
+          )}
         </div>
         <span className="text-xs text-[var(--color-text-secondary)]">
           {formatRelativeTime(content.created_at)}
@@ -49,13 +54,25 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete, isSelec
       </p>
 
       <div className="flex items-center gap-2">
-        {!selectionMode && content.status === 'draft' && onStatusChange && (
+        {!selectionMode && onStatusChange && (
+          <select
+            value={content.status}
+            onChange={(e) => onStatusChange(e.target.value as 'draft' | 'approved' | 'posted')}
+            className="rounded-[var(--radius-button)] border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-1.5 text-xs text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="draft">Draft</option>
+            <option value="approved">Approved</option>
+            <option value="posted">Posted</option>
+          </select>
+        )}
+        {!selectionMode && content.status === 'approved' && onStatusChange && (
           <button
-            onClick={() => onStatusChange('approved')}
+            onClick={() => onStatusChange('posted')}
             className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
           >
-            <Check size={14} />
-            Approve
+            <Send size={14} />
+            Publish
           </button>
         )}
         {!selectionMode && onEdit && content.status !== 'posted' && (
@@ -65,15 +82,6 @@ export function ContentCard({ content, onStatusChange, onEdit, onDelete, isSelec
           >
             <Pencil size={14} />
             Edit
-          </button>
-        )}
-        {!selectionMode && content.status === 'approved' && onStatusChange && (
-          <button
-            onClick={() => onStatusChange('posted')}
-            className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
-          >
-            <Send size={14} />
-            Publish
           </button>
         )}
         {!selectionMode && onDelete && (

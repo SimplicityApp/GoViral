@@ -3,7 +3,7 @@ import type { Post, TrendingPost } from '@/lib/types'
 import { MetricsBadge } from './MetricsBadge'
 import { formatRelativeTime } from '@/lib/format'
 import { usePlatformParam } from '@/hooks/usePlatformParam'
-import { Repeat2 } from 'lucide-react'
+import { Repeat2, MessageCircle } from 'lucide-react'
 
 function isTrendingPost(post: Post | TrendingPost): post is TrendingPost {
   return 'author_username' in post
@@ -15,15 +15,17 @@ interface PostCardProps {
   selected?: boolean
   onSelect?: () => void
   onRepost?: () => void
+  onComment?: () => void
 }
 
-export function PostCard({ post, selectable, selected, onSelect, onRepost }: PostCardProps) {
+export function PostCard({ post, selectable, selected, onSelect, onRepost, onComment }: PostCardProps) {
   const activePlatform = usePlatformParam()
   const isLinkedIn = activePlatform === 'linkedin'
   const [expanded, setExpanded] = useState(false)
-  const isTruncated = post.content.length > 280
+  const previewLimit = isLinkedIn ? 400 : 280
+  const isTruncated = post.content.length > previewLimit
   const content = !expanded && isTruncated
-    ? post.content.slice(0, 280) + '...'
+    ? post.content.slice(0, previewLimit) + '...'
     : post.content
 
   return (
@@ -43,6 +45,16 @@ export function PostCard({ post, selectable, selected, onSelect, onRepost }: Pos
           <span className="text-xs text-[var(--color-text-secondary)]">
             @{post.author_username}
           </span>
+          {!post.is_actionable && (
+            <span
+              title={isLinkedIn
+                ? "Scraped without a direct LinkedIn URN — auto-posting unavailable. Generate a draft to post manually."
+                : "Scraped post — direct engagement unavailable. Generate a draft to post manually."}
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 cursor-help"
+            >
+              View only
+            </span>
+          )}
         </div>
       )}
 
@@ -91,6 +103,18 @@ export function PostCard({ post, selectable, selected, onSelect, onRepost }: Pos
           >
             <Repeat2 size={12} />
             Repost
+          </button>
+        )}
+        {isTrendingPost(post) && onComment && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onComment()
+            }}
+            className="flex items-center gap-1 rounded-[var(--radius-button)] border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          >
+            <MessageCircle size={12} />
+            Comment
           </button>
         )}
         <span className="text-xs text-[var(--color-text-secondary)]">

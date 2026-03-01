@@ -51,6 +51,11 @@ export function BatchCard({ batch, onApprove, onReject, isActing }: BatchCardPro
           >
             {batch.status.replace(/_/g, ' ')}
           </span>
+          {batch.batch_type === 'digest' && (
+            <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+              Nightly Digest
+            </span>
+          )}
           {batch.telegram_message_id > 0 && (
             <span className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)]">
               <MessageSquare size={12} />

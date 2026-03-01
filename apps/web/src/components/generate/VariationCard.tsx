@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Check, X, Pencil } from 'lucide-react'
@@ -7,15 +7,68 @@ interface VariationCardProps {
   content: GeneratedContent
   onApprove: () => void
   onReject: () => void
-  onEdit: (text: string) => void
+  onEdit: (text: string, description?: string) => void
+}
+
+function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId: number }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [errored, setErrored] = useState(false)
+
+  useEffect(() => {
+    const apiKey = localStorage.getItem('goviral_api_key')
+    const headers: Record<string, string> = {}
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+
+    // Prefer content-specific image (AI-selected snippet), fall back to commit-level
+    const url = contentId > 0
+      ? `/api/v1/content/${contentId}/code-image`
+      : `/api/v1/repos/commits/${commitId}/image`
+
+    fetch(url, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error('failed')
+        return res.blob()
+      })
+      .then((blob) => {
+        setBlobUrl(URL.createObjectURL(blob))
+      })
+      .catch(() => setErrored(true))
+
+    return () => {
+      setBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+    }
+  }, [contentId, commitId])
+
+  if (errored) return null
+
+  return (
+    <div className="mb-4">
+      {!blobUrl && (
+        <div className="h-32 animate-pulse rounded-lg bg-[var(--color-border)]" />
+      )}
+      {blobUrl && (
+        <img
+          src={blobUrl}
+          alt="Code diff"
+          className="w-full rounded-lg border border-[var(--color-border)]"
+        />
+      )}
+    </div>
+  )
 }
 
 export function VariationCard({ content, onApprove, onReject, onEdit }: VariationCardProps) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(content.generated_content)
+  const [editDescription, setEditDescription] = useState(content.code_image_description ?? '')
 
   const handleSave = () => {
-    onEdit(editText)
+    onEdit(editText, editDescription || undefined)
     setEditing(false)
   }
 
@@ -43,6 +96,21 @@ export function VariationCard({ content, onApprove, onReject, onEdit }: Variatio
             rows={6}
             className="w-full resize-none rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-sm text-[var(--color-text)]"
           />
+          {content.source_type === 'commit' && content.source_commit_id > 0 && (
+            <div className="mt-2">
+              <label className="mb-1 block text-xs text-[var(--color-text-secondary)]">
+                Image description (max 80 chars)
+              </label>
+              <input
+                type="text"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value.slice(0, 80))}
+                maxLength={80}
+                placeholder="e.g. Added retry logic with exponential backoff"
+                className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+              />
+            </div>
+          )}
           <div className="mt-2 flex gap-2">
             <button
               onClick={handleSave}
@@ -53,6 +121,7 @@ export function VariationCard({ content, onApprove, onReject, onEdit }: Variatio
             <button
               onClick={() => {
                 setEditText(content.generated_content)
+                setEditDescription(content.code_image_description ?? '')
                 setEditing(false)
               }}
               className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)]"
@@ -65,6 +134,17 @@ export function VariationCard({ content, onApprove, onReject, onEdit }: Variatio
         <p className="mb-4 whitespace-pre-wrap text-sm text-[var(--color-text)]">
           {content.generated_content}
         </p>
+      )}
+
+      {content.source_type === 'commit' && content.source_commit_id > 0 && (
+        <>
+          <CodeImagePreview contentId={content.id} commitId={content.source_commit_id} />
+          {!editing && content.code_image_description && (
+            <p className="-mt-2 mb-4 text-xs text-[var(--color-text-secondary)]">
+              {content.code_image_description}
+            </p>
+          )}
+        </>
       )}
 
       {!editing && content.status === 'draft' && (
