@@ -110,7 +110,17 @@ func (c *TwikitClient) ExtractCookies(ctx context.Context) error {
 }
 
 // PostTweet creates a new tweet via the twikit Python subprocess.
+// Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostTweet(ctx context.Context, text string) (string, error) {
+	id, err := c.runPostTweet(ctx, text)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on post tweet, retrying", "original_error", err)
+		id, err = c.runPostTweet(ctx, text)
+	}
+	return id, err
+}
+
+func (c *TwikitClient) runPostTweet(ctx context.Context, text string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text)
 	cmd.Stdout = &stdout
@@ -124,7 +134,17 @@ func (c *TwikitClient) PostTweet(ctx context.Context, text string) (string, erro
 }
 
 // PostQuoteTweet creates a quote tweet via the twikit Python subprocess.
+// Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
+	id, err := c.runPostQuoteTweet(ctx, text, quoteTweetID)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on post quote tweet, retrying", "original_error", err)
+		id, err = c.runPostQuoteTweet(ctx, text, quoteTweetID)
+	}
+	return id, err
+}
+
+func (c *TwikitClient) runPostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_quote_tweet", text, quoteTweetID)
 	cmd.Stdout = &stdout
@@ -138,7 +158,17 @@ func (c *TwikitClient) PostQuoteTweet(ctx context.Context, text string, quoteTwe
 }
 
 // PostReply creates a reply to an existing tweet via the twikit Python subprocess.
+// Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostReply(ctx context.Context, text string, inReplyToID string) (string, error) {
+	id, err := c.runPostReply(ctx, text, inReplyToID)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on post reply, retrying", "original_error", err)
+		id, err = c.runPostReply(ctx, text, inReplyToID)
+	}
+	return id, err
+}
+
+func (c *TwikitClient) runPostReply(ctx context.Context, text string, inReplyToID string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text, inReplyToID)
 	cmd.Stdout = &stdout
@@ -223,7 +253,17 @@ func (c *TwikitClient) UploadMedia(ctx context.Context, imageData []byte, mimeTy
 }
 
 // PostTweetWithMedia posts a tweet with media via the twikit Python subprocess.
+// Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostTweetWithMedia(ctx context.Context, text string, mediaIDs []string) (string, error) {
+	id, err := c.runPostTweetWithMedia(ctx, text, mediaIDs)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on post tweet with media, retrying", "original_error", err)
+		id, err = c.runPostTweetWithMedia(ctx, text, mediaIDs)
+	}
+	return id, err
+}
+
+func (c *TwikitClient) runPostTweetWithMedia(ctx context.Context, text string, mediaIDs []string) (string, error) {
 	mediaJSON, err := json.Marshal(mediaIDs)
 	if err != nil {
 		return "", fmt.Errorf("marshaling media IDs: %w", err)
@@ -242,7 +282,17 @@ func (c *TwikitClient) PostTweetWithMedia(ctx context.Context, text string, medi
 }
 
 // PostReplyWithMedia posts a reply with media via the twikit Python subprocess.
+// Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostReplyWithMedia(ctx context.Context, text string, inReplyToID string, mediaIDs []string) (string, error) {
+	id, err := c.runPostReplyWithMedia(ctx, text, inReplyToID, mediaIDs)
+	if err != nil && strings.Contains(err.Error(), "cookies refreshed") {
+		slog.Warn("twikit session refreshed on post reply with media, retrying", "original_error", err)
+		id, err = c.runPostReplyWithMedia(ctx, text, inReplyToID, mediaIDs)
+	}
+	return id, err
+}
+
+func (c *TwikitClient) runPostReplyWithMedia(ctx context.Context, text string, inReplyToID string, mediaIDs []string) (string, error) {
 	mediaJSON, err := json.Marshal(mediaIDs)
 	if err != nil {
 		return "", fmt.Errorf("marshaling media IDs: %w", err)

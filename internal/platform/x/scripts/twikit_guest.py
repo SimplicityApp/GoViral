@@ -228,7 +228,17 @@ def create_tweet(text, reply_to=None, media_ids_json=None):
             if media_ids:
                 kwargs["media_ids"] = media_ids
 
-        tweet = await client.create_tweet(text, **kwargs)
+        try:
+            tweet = await client.create_tweet(text, **kwargs)
+        except KeyError as e:
+            client.save_cookies(COOKIES_PATH)
+            raise Exception(
+                f"X API response missing field {e} — this may indicate rate limiting, "
+                "a duplicate post, or an API change. Try again in a few seconds."
+            )
+        if tweet is None:
+            client.save_cookies(COOKIES_PATH)  # refresh ct0 for retry
+            raise Exception("create_tweet returned None — cookies refreshed, retry should work")
         client.save_cookies(COOKIES_PATH)
         return {"tweet_id": str(tweet.id)}
 
@@ -236,47 +246,24 @@ def create_tweet(text, reply_to=None, media_ids_json=None):
 
 
 def create_quote_tweet(text, quote_tweet_id):
-    """Create a quote tweet using cookie-based auth via direct GQL.
-
-    twikit's create_tweet() doesn't support quote_tweet_id, so we call
-    the CreateTweet GraphQL endpoint directly with attachment_url in the
-    variables, which is how X's web client creates quote tweets.
-    """
+    """Create a quote tweet using cookie-based auth."""
     import asyncio
 
     async def _create():
         from twikit import Client
-        from twikit.client.gql import Endpoint, FEATURES, get_query_id
 
         client = Client("en-US")
         client.load_cookies(COOKIES_PATH)
 
-        variables = {
-            "tweet_text": text,
-            "dark_request": False,
-            "media": {
-                "media_entities": [],
-                "possibly_sensitive": False,
-            },
-            "semantic_annotation_ids": [],
-            "attachment_url": f"https://x.com/i/status/{quote_tweet_id}",
-        }
-
-        data = {
-            "variables": variables,
-            "queryId": get_query_id(Endpoint.CREATE_TWEET),
-            "features": FEATURES,
-        }
-
-        response, _ = await client.post(
-            Endpoint.CREATE_TWEET,
-            json=data,
-            headers=client._base_headers,
+        tweet = await client.create_tweet(
+            text,
+            attachment_url=f"https://x.com/i/status/{quote_tweet_id}",
         )
-
-        tweet_id = response["data"]["create_tweet"]["tweet_results"]["result"]["rest_id"]
+        if tweet is None:
+            client.save_cookies(COOKIES_PATH)
+            raise Exception("create_quote_tweet returned None — cookies refreshed, retry should work")
         client.save_cookies(COOKIES_PATH)
-        return {"tweet_id": str(tweet_id)}
+        return {"tweet_id": str(tweet.id)}
 
     return asyncio.run(_create())
 

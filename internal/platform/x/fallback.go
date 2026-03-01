@@ -142,6 +142,7 @@ func (fc *FallbackClient) PostTweet(ctx context.Context, text string) (string, e
 		if twikitErr != nil {
 			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
 		}
+		log.Printf("twikit fallback succeeded for tweet, post ID: %s", id)
 		return id, nil
 	}
 
@@ -169,6 +170,7 @@ func (fc *FallbackClient) PostReply(ctx context.Context, text string, inReplyToI
 		if twikitErr != nil {
 			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
 		}
+		log.Printf("twikit fallback succeeded for reply, post ID: %s", id)
 		return id, nil
 	}
 
@@ -223,6 +225,7 @@ func (fc *FallbackClient) PostTweetWithMedia(ctx context.Context, text string, m
 		if twikitErr != nil {
 			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
 		}
+		log.Printf("twikit fallback succeeded for tweet with media, post ID: %s", id)
 		return id, nil
 	}
 
@@ -250,6 +253,7 @@ func (fc *FallbackClient) PostReplyWithMedia(ctx context.Context, text string, i
 		if twikitErr != nil {
 			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
 		}
+		log.Printf("twikit fallback succeeded for reply with media, post ID: %s", id)
 		return id, nil
 	}
 
@@ -278,6 +282,7 @@ func (fc *FallbackClient) PostQuoteTweet(ctx context.Context, text string, quote
 			log.Printf("twikit fallback also failed for quote tweet: %v", twikitErr)
 			return "", fmt.Errorf("primary API failed: %w; twikit fallback also failed: %w", primaryErr, twikitErr)
 		}
+		log.Printf("twikit fallback succeeded for quote tweet (quoting %s), post ID: %s", quoteTweetID, id)
 		return id, nil
 	}
 
