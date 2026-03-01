@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,11 @@ func NewClient(token string) *Client {
 		},
 		pollHTTPClient: &http.Client{
 			Timeout: pollHTTPTimeout,
+			Transport: &http.Transport{
+				IdleConnTimeout:   30 * time.Second,
+				MaxIdleConns:      2,
+				DisableKeepAlives: true,
+			},
 		},
 	}
 }
@@ -100,6 +106,72 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text, parseMode 
 // SendMessageWithMarkdown sends a Markdown-formatted message.
 func (c *Client) SendMessageWithMarkdown(ctx context.Context, chatID int64, text string) (int64, error) {
 	return c.SendMessage(ctx, chatID, text, "Markdown")
+}
+
+// SendLongMessageWithMarkdown sends a Markdown message, splitting it into
+// multiple messages if it exceeds Telegram's 4096-character limit.
+// It splits on paragraph breaks (\n\n), then line breaks (\n), then force-splits.
+// Returns the first message's ID (for reply tracking).
+func (c *Client) SendLongMessageWithMarkdown(ctx context.Context, chatID int64, text string) (int64, error) {
+	const maxRunes = 4096
+
+	if len([]rune(text)) <= maxRunes {
+		return c.SendMessageWithMarkdown(ctx, chatID, text)
+	}
+
+	chunks := splitMessage(text, maxRunes)
+	var firstID int64
+	for i, chunk := range chunks {
+		msgID, err := c.SendMessageWithMarkdown(ctx, chatID, chunk)
+		if err != nil {
+			return firstID, fmt.Errorf("sending chunk %d/%d: %w", i+1, len(chunks), err)
+		}
+		if i == 0 {
+			firstID = msgID
+		}
+	}
+	return firstID, nil
+}
+
+// splitMessage splits text into chunks of at most maxRunes runes each.
+// It tries to split on "\n\n" first, then "\n", then force-splits.
+func splitMessage(text string, maxRunes int) []string {
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return []string{text}
+	}
+
+	var chunks []string
+	for len(runes) > 0 {
+		if len(runes) <= maxRunes {
+			chunks = append(chunks, string(runes))
+			break
+		}
+
+		// Find the best split point within maxRunes
+		chunk := runes[:maxRunes]
+		chunkStr := string(chunk)
+
+		// Try paragraph break first
+		if idx := strings.LastIndex(chunkStr, "\n\n"); idx > 0 {
+			chunks = append(chunks, string(runes[:len([]rune(chunkStr[:idx]))]))
+			runes = runes[len([]rune(chunkStr[:idx]))+2:] // skip the \n\n
+			continue
+		}
+
+		// Try line break
+		if idx := strings.LastIndex(chunkStr, "\n"); idx > 0 {
+			chunks = append(chunks, string(runes[:len([]rune(chunkStr[:idx]))]))
+			runes = runes[len([]rune(chunkStr[:idx]))+1:] // skip the \n
+			continue
+		}
+
+		// Force split
+		chunks = append(chunks, string(runes[:maxRunes]))
+		runes = runes[maxRunes:]
+	}
+
+	return chunks
 }
 
 // EditMessage edits an existing message.
