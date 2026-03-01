@@ -26,19 +26,22 @@ var (
 	postScheduled    bool
 	postRunScheduled bool
 	postDryRun       bool
+	postVideo        string
+	postThumbnail    string
 )
 
 var postCmd = &cobra.Command{
 	Use:   "post",
-	Short: "Post or schedule generated content to X",
-	Long: `Post generated content to X as tweets or threads.
-Supports scheduling for later posting via cron.
+	Short: "Post or schedule generated content to X, LinkedIn, YouTube, or TikTok",
+	Long: `Post generated content to social media platforms.
+Supports X threads, LinkedIn posts, YouTube Shorts, and TikTok videos.
 
 Examples:
   goviral post                          # Interactive selection
   goviral post --id 5                   # Post specific content
   goviral post --id 5 --dry-run         # Preview thread splitting
   goviral post --id 5 --at "2025-03-01 09:00"  # Schedule for later
+  goviral post --id 5 --video /path/to/video.mp4  # Post with video
   goviral post --scheduled              # List pending scheduled posts
   goviral post --run-scheduled          # Post due scheduled posts (for cron)`,
 	RunE: runPost,
@@ -51,6 +54,8 @@ func init() {
 	postCmd.Flags().BoolVar(&postScheduled, "scheduled", false, "List pending scheduled posts")
 	postCmd.Flags().BoolVar(&postRunScheduled, "run-scheduled", false, "Post any due scheduled posts")
 	postCmd.Flags().BoolVar(&postDryRun, "dry-run", false, "Preview thread splitting without posting")
+	postCmd.Flags().StringVar(&postVideo, "video", "", "Path to video file (for YouTube/TikTok)")
+	postCmd.Flags().StringVar(&postThumbnail, "thumbnail", "", "Path to thumbnail image (for YouTube)")
 	rootCmd.AddCommand(postCmd)
 }
 
@@ -218,11 +223,11 @@ func runPost(cmd *cobra.Command, args []string) error {
 
 func interactiveContentSelect(database *db.DB) (*models.GeneratedContent, error) {
 	// Fetch draft and approved content
-	drafts, err := database.GetGeneratedContent("draft", 0)
+	drafts, err := database.GetGeneratedContent("draft", "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("fetching drafts: %w", err)
 	}
-	approved, err := database.GetGeneratedContent("approved", 0)
+	approved, err := database.GetGeneratedContent("approved", "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("fetching approved content: %w", err)
 	}

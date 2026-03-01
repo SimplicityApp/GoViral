@@ -57,7 +57,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 	}
 
 	// List items
-	items, err := database.GetGeneratedContent(historyStatus, 50)
+	items, err := database.GetGeneratedContent(historyStatus, "", 50)
 	if err != nil {
 		return fmt.Errorf("fetching history: %w", err)
 	}

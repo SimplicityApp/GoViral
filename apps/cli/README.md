@@ -23,7 +23,7 @@ goviral auth x            # OAuth 2.0 with PKCE for X
 goviral auth linkedin     # OAuth 2.0 for LinkedIn
 goviral auth              # Interactive platform picker
 goviral twikit-login      # Extract X cookies from Chrome (fallback)
-goviral likit-login       # Extract LinkedIn cookies from Chrome (fallback)
+goviral linkitin-login       # Extract LinkedIn cookies from Chrome (fallback)
 ```
 
 The `auth` commands accept `--port` (default `8080`) for the local OAuth callback server.
@@ -35,7 +35,7 @@ The `auth` commands accept `--port` (default `8080`) for the local OAuth callbac
 | `init` | Interactive setup wizard | |
 | `auth [x\|linkedin]` | OAuth authentication | `--port` |
 | `twikit-login` | Extract X cookies from Chrome | |
-| `likit-login` | Extract LinkedIn cookies from Chrome | |
+| `linkitin-login` | Extract LinkedIn cookies from Chrome | |
 | `fetch` | Fetch your posts from X/LinkedIn | `-p, --platform` (x, linkedin, all), `-l, --limit` (default 50) |
 | `posts` | View fetched posts | `-p, --platform` (x, linkedin, all), `-l, --limit` (default 20) |
 | `trending` | Discover trending posts in your niches | `-p, --platform`, `--period` (day, week, month), `--min-likes` (default 100), `-l, --limit`, `--per-niche` (default 5) |
