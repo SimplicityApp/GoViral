@@ -19,17 +19,15 @@ async function checkAuth(): Promise<boolean> {
 
 export function ApiKeyGate({ children, publicPaths = [] }: { children: ReactNode; publicPaths?: string[] }) {
   const { pathname } = useLocation()
-
-  if (publicPaths.includes(pathname)) {
-    return <>{children}</>
-  }
+  const isPublic = publicPaths.includes(pathname)
   const [status, setStatus] = useState<'checking' | 'ok' | 'needs_key'>('checking')
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (isPublic) return
     checkAuth().then((ok) => setStatus(ok ? 'ok' : 'needs_key'))
-  }, [])
+  }, [isPublic])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,6 +43,10 @@ export function ApiKeyGate({ children, publicPaths = [] }: { children: ReactNode
       localStorage.removeItem(STORAGE_KEY)
       setError('Invalid API key')
     }
+  }
+
+  if (isPublic) {
+    return <>{children}</>
   }
 
   if (status === 'checking') {
