@@ -498,38 +498,56 @@ func TestGetGeneratedContent(t *testing.T) {
 	}
 
 	// All content
-	all, err := db.GetGeneratedContent("", 0)
+	all, err := db.GetGeneratedContent("", "", 0)
 	if err != nil {
-		t.Fatalf("GetGeneratedContent('', 0) error = %v", err)
+		t.Fatalf("GetGeneratedContent('', '', 0) error = %v", err)
 	}
 	if len(all) != 3 {
-		t.Errorf("GetGeneratedContent('', 0) returned %d, want 3", len(all))
+		t.Errorf("GetGeneratedContent('', '', 0) returned %d, want 3", len(all))
 	}
 
 	// Filter by status
-	drafts, err := db.GetGeneratedContent("draft", 0)
+	drafts, err := db.GetGeneratedContent("draft", "", 0)
 	if err != nil {
-		t.Fatalf("GetGeneratedContent('draft', 0) error = %v", err)
+		t.Fatalf("GetGeneratedContent('draft', '', 0) error = %v", err)
 	}
 	if len(drafts) != 2 {
-		t.Errorf("GetGeneratedContent('draft', 0) returned %d, want 2", len(drafts))
+		t.Errorf("GetGeneratedContent('draft', '', 0) returned %d, want 2", len(drafts))
 	}
 
-	approved, err := db.GetGeneratedContent("approved", 0)
+	approved, err := db.GetGeneratedContent("approved", "", 0)
 	if err != nil {
-		t.Fatalf("GetGeneratedContent('approved', 0) error = %v", err)
+		t.Fatalf("GetGeneratedContent('approved', '', 0) error = %v", err)
 	}
 	if len(approved) != 1 {
-		t.Errorf("GetGeneratedContent('approved', 0) returned %d, want 1", len(approved))
+		t.Errorf("GetGeneratedContent('approved', '', 0) returned %d, want 1", len(approved))
 	}
 
 	// With limit
-	limited, err := db.GetGeneratedContent("", 2)
+	limited, err := db.GetGeneratedContent("", "", 2)
 	if err != nil {
-		t.Fatalf("GetGeneratedContent('', 2) error = %v", err)
+		t.Fatalf("GetGeneratedContent('', '', 2) error = %v", err)
 	}
 	if len(limited) != 2 {
-		t.Errorf("GetGeneratedContent('', 2) returned %d, want 2", len(limited))
+		t.Errorf("GetGeneratedContent('', '', 2) returned %d, want 2", len(limited))
+	}
+
+	// Filter by platform
+	linkedin, err := db.GetGeneratedContent("", "linkedin", 0)
+	if err != nil {
+		t.Fatalf("GetGeneratedContent('', 'linkedin', 0) error = %v", err)
+	}
+	if len(linkedin) != 1 {
+		t.Errorf("GetGeneratedContent('', 'linkedin', 0) returned %d, want 1", len(linkedin))
+	}
+
+	// Filter by status and platform
+	xDrafts, err := db.GetGeneratedContent("draft", "x", 0)
+	if err != nil {
+		t.Fatalf("GetGeneratedContent('draft', 'x', 0) error = %v", err)
+	}
+	if len(xDrafts) != 1 {
+		t.Errorf("GetGeneratedContent('draft', 'x', 0) returned %d, want 1", len(xDrafts))
 	}
 }
 
@@ -619,6 +637,115 @@ func TestUpdateGeneratedContentStatus(t *testing.T) {
 	}
 	if got.Status != "posted" {
 		t.Errorf("Status after second update = %q, want 'posted'", got.Status)
+	}
+}
+
+// --- daemon dedup tests ---
+
+func TestGetActionedTrendingIDs(t *testing.T) {
+	db := setupTestDB(t)
+
+	now := time.Now()
+
+	// Insert a "posted" batch with trending IDs [10, 20, 30]
+	_, err := db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"x", "posted", "[10,20,30]", now.Add(-1*time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("insert posted batch: %v", err)
+	}
+
+	// Insert a "rejected" batch with trending IDs [40, 50]
+	_, err = db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"x", "rejected", "[40,50]", now.Add(-30*time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("insert rejected batch: %v", err)
+	}
+
+	// Insert an "archived" batch (should NOT be excluded)
+	_, err = db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"x", "archived", "[60,70]", now.Add(-30*time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("insert archived batch: %v", err)
+	}
+
+	// Insert a "posted" batch for linkedin (should NOT appear in x results)
+	_, err = db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"linkedin", "posted", "[80,90]", now.Add(-30*time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("insert linkedin batch: %v", err)
+	}
+
+	// Insert old batch outside the lookback window
+	_, err = db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"x", "posted", "[100,110]", now.Add(-48*time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("insert old batch: %v", err)
+	}
+
+	// Query with 24h lookback
+	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
+	}
+
+	// Should contain IDs from posted + rejected batches within 24h
+	expected := []int64{10, 20, 30, 40, 50}
+	for _, id := range expected {
+		if !ids[id] {
+			t.Errorf("expected ID %d to be in actioned set", id)
+		}
+	}
+
+	// Should NOT contain archived, linkedin, or old IDs
+	notExpected := []int64{60, 70, 80, 90, 100, 110}
+	for _, id := range notExpected {
+		if ids[id] {
+			t.Errorf("did NOT expect ID %d to be in actioned set", id)
+		}
+	}
+}
+
+func TestGetActionedTrendingIDs_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(ids))
+	}
+}
+
+func TestGetActionedTrendingIDs_ScheduledIncluded(t *testing.T) {
+	db := setupTestDB(t)
+
+	now := time.Now()
+	_, err := db.conn.Exec(
+		`INSERT INTO daemon_batches (platform, status, trending_ids, resolved_at) VALUES (?, ?, ?, ?)`,
+		"x", "scheduled", "[200,210]", now.Add(-1*time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("insert scheduled batch: %v", err)
+	}
+
+	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
+	}
+
+	if !ids[200] || !ids[210] {
+		t.Errorf("expected scheduled IDs 200 and 210 in actioned set, got %v", ids)
 	}
 }
 

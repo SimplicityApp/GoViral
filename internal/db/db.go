@@ -122,7 +122,10 @@ func (db *DB) migrate() error {
 	// Add daemon_batch_id to generated_content
 	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN daemon_batch_id INTEGER DEFAULT 0")
 
-	// Daemon batches table
+	// Add comment support
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN is_comment INTEGER DEFAULT 0")
+
+	// Daemon batches table (batch_type added later via ALTER)
 	db.conn.Exec(`CREATE TABLE IF NOT EXISTS daemon_batches (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		platform TEXT NOT NULL,
@@ -139,6 +142,80 @@ func (db *DB) migrate() error {
 		notified_at DATETIME,
 		resolved_at DATETIME
 	)`)
+
+	// Add batch_type to daemon_batches for comment batches
+	db.conn.Exec("ALTER TABLE daemon_batches ADD COLUMN batch_type TEXT DEFAULT 'content'")
+
+	// GitHub repos table
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS github_repos (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		owner TEXT NOT NULL,
+		name TEXT NOT NULL,
+		full_name TEXT UNIQUE NOT NULL,
+		description TEXT DEFAULT '',
+		default_branch TEXT DEFAULT 'main',
+		language TEXT DEFAULT '',
+		added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Repo commits table
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS repo_commits (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		repo_id INTEGER NOT NULL REFERENCES github_repos(id),
+		sha TEXT NOT NULL,
+		message TEXT NOT NULL,
+		author_name TEXT DEFAULT '',
+		author_email TEXT DEFAULT '',
+		committed_at DATETIME,
+		additions INTEGER DEFAULT 0,
+		deletions INTEGER DEFAULT 0,
+		files_changed INTEGER DEFAULT 0,
+		diff_summary TEXT DEFAULT '',
+		diff_patch TEXT DEFAULT '',
+		files_json TEXT DEFAULT '[]',
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(repo_id, sha)
+	)`)
+
+	// Add per-repo custom settings
+	db.conn.Exec("ALTER TABLE github_repos ADD COLUMN target_audience TEXT DEFAULT ''")
+	db.conn.Exec("ALTER TABLE github_repos ADD COLUMN links_json TEXT DEFAULT '[]'")
+
+	// Add commit-sourced content columns to generated_content
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN source_type TEXT DEFAULT 'trending'")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN source_commit_id INTEGER DEFAULT 0")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN code_image_path TEXT DEFAULT ''")
+
+	// Add thread_urn to trending_posts for LinkedIn ugcPost comment threading
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN thread_urn TEXT DEFAULT ''")
+
+	// Add code image description for AI-generated overlay text
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN code_image_description TEXT DEFAULT ''")
+
+	// Video support columns for YouTube Shorts & TikTok
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN video_path TEXT DEFAULT ''")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN thumbnail_path TEXT DEFAULT ''")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN video_duration INTEGER DEFAULT 0")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN video_title TEXT DEFAULT ''")
+
+	// Video fields for trending posts
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN video_url TEXT DEFAULT ''")
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN view_count INTEGER DEFAULT 0")
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN duration INTEGER DEFAULT 0")
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN is_video INTEGER DEFAULT 0")
+
+	// Archive existing cross-platform content (source trending post platform ≠ target_platform).
+	// Idempotent: status NOT IN ('posted', 'archived') prevents re-archiving.
+	db.conn.Exec(`
+		UPDATE generated_content SET status = 'archived'
+		WHERE status NOT IN ('posted', 'archived')
+		  AND source_trending_id != 0
+		  AND id IN (
+		      SELECT gc.id FROM generated_content gc
+		      JOIN trending_posts tp ON gc.source_trending_id = tp.id
+		      WHERE gc.target_platform != tp.platform
+		  )
+	`)
 
 	return nil
 }
@@ -266,15 +343,19 @@ func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
 		return fmt.Errorf("marshaling media: %w", err)
 	}
 
+	isVideo := 0
+	if tp.IsVideo {
+		isVideo = 1
+	}
 	query := `
-	INSERT INTO trending_posts (platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, media_json, posted_at, fetched_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO trending_posts (platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, media_json, posted_at, fetched_at, thread_urn, video_url, view_count, duration, is_video)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(platform_post_id) DO UPDATE SET
 		content=excluded.content, likes=excluded.likes, reposts=excluded.reposts,
-		comments=excluded.comments, impressions=excluded.impressions, niche_tags=excluded.niche_tags, media_json=excluded.media_json, fetched_at=excluded.fetched_at
+		comments=excluded.comments, impressions=excluded.impressions, niche_tags=excluded.niche_tags, media_json=excluded.media_json, fetched_at=excluded.fetched_at, thread_urn=excluded.thread_urn, video_url=excluded.video_url, view_count=excluded.view_count, duration=excluded.duration, is_video=excluded.is_video
 	RETURNING id
 	`
-	row := db.conn.QueryRow(query, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now())
+	row := db.conn.QueryRow(query, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now(), tp.ThreadURN, tp.VideoURL, tp.ViewCount, tp.Duration, isVideo)
 	if err := row.Scan(&tp.ID); err != nil {
 		return fmt.Errorf("upserting trending post: %w", err)
 	}
@@ -286,7 +367,7 @@ func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
 // of the latest fetched_at are returned, so stale results from previous runs
 // are excluded.
 func (db *DB) GetTrendingPosts(platform string, limit int) ([]models.TrendingPost, error) {
-	query := "SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at FROM trending_posts"
+	query := "SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts"
 	var args []interface{}
 
 	if platform != "" {
@@ -305,7 +386,7 @@ func (db *DB) GetTrendingPosts(platform string, limit int) ([]models.TrendingPos
 	for rows.Next() {
 		var tp models.TrendingPost
 		var nicheTagsJSON, mediaJSON string
-		if err := rows.Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt); err != nil {
+		if err := rows.Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt, &tp.ThreadURN, &tp.VideoURL, &tp.ViewCount, &tp.Duration, &tp.IsVideo); err != nil {
 			return nil, fmt.Errorf("scanning trending post row: %w", err)
 		}
 		if nicheTagsJSON != "" {
@@ -354,9 +435,9 @@ func (db *DB) GetTrendingPostByID(id int64) (*models.TrendingPost, error) {
 	var tp models.TrendingPost
 	var nicheTagsJSON, mediaJSON string
 	err := db.conn.QueryRow(
-		"SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at FROM trending_posts WHERE id = ?",
+		"SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts WHERE id = ?",
 		id,
-	).Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt)
+	).Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt, &tp.ThreadURN, &tp.VideoURL, &tp.ViewCount, &tp.Duration, &tp.IsVideo)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -380,9 +461,13 @@ func (db *DB) GetTrendingPostByID(id int64) (*models.TrendingPost, error) {
 
 // InsertGeneratedContent inserts a new generated content record.
 func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error) {
+	sourceType := gc.SourceType
+	if sourceType == "" {
+		sourceType = "trending"
+	}
 	result, err := db.conn.Exec(
-		"INSERT INTO generated_content (source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path, is_repost, quote_tweet_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath, gc.IsRepost, gc.QuoteTweetID,
+		"INSERT INTO generated_content (source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path, is_repost, quote_tweet_id, is_comment, source_type, source_commit_id, code_image_path, code_image_description, video_path, thumbnail_path, video_duration, video_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath, gc.IsRepost, gc.QuoteTweetID, gc.IsComment, sourceType, gc.SourceCommitID, gc.CodeImagePath, gc.CodeImageDescription, gc.VideoPath, gc.ThumbnailPath, gc.VideoDuration, gc.VideoTitle,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting generated content: %w", err)
@@ -390,14 +475,28 @@ func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error)
 	return result.LastInsertId()
 }
 
-// GetGeneratedContent returns generated content with optional status filter.
-func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedContent, error) {
-	query := "SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, '') FROM generated_content"
+// GetGeneratedContent returns generated content with optional status and platform filters.
+func (db *DB) GetGeneratedContent(status string, platform string, limit int) ([]models.GeneratedContent, error) {
+	query := "SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, ''), COALESCE(is_comment, 0), COALESCE(source_type, 'trending'), COALESCE(source_commit_id, 0), COALESCE(code_image_path, ''), COALESCE(code_image_description, ''), COALESCE(video_path, ''), COALESCE(thumbnail_path, ''), COALESCE(video_duration, 0), COALESCE(video_title, '') FROM generated_content"
 	var args []interface{}
+	var conditions []string
 
 	if status != "" {
-		query += " WHERE status = ?"
+		conditions = append(conditions, "status = ?")
 		args = append(args, status)
+	} else {
+		// When no status filter is given, exclude archived records (soft-deleted)
+		conditions = append(conditions, "status != 'archived'")
+	}
+	if platform != "" {
+		conditions = append(conditions, "target_platform = ?")
+		args = append(args, platform)
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + conditions[0]
+		for _, c := range conditions[1:] {
+			query += " AND " + c
+		}
 	}
 	query += " ORDER BY created_at DESC"
 	if limit > 0 {
@@ -414,7 +513,7 @@ func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedC
 	var contents []models.GeneratedContent
 	for rows.Next() {
 		var gc models.GeneratedContent
-		if err := rows.Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID); err != nil {
+		if err := rows.Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID, &gc.IsComment, &gc.SourceType, &gc.SourceCommitID, &gc.CodeImagePath, &gc.CodeImageDescription, &gc.VideoPath, &gc.ThumbnailPath, &gc.VideoDuration, &gc.VideoTitle); err != nil {
 			return nil, fmt.Errorf("scanning generated content row: %w", err)
 		}
 		contents = append(contents, gc)
@@ -426,9 +525,9 @@ func (db *DB) GetGeneratedContent(status string, limit int) ([]models.GeneratedC
 func (db *DB) GetGeneratedContentByID(id int64) (*models.GeneratedContent, error) {
 	var gc models.GeneratedContent
 	err := db.conn.QueryRow(
-		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, '') FROM generated_content WHERE id = ?",
+		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, ''), COALESCE(is_comment, 0), COALESCE(source_type, 'trending'), COALESCE(source_commit_id, 0), COALESCE(code_image_path, ''), COALESCE(code_image_description, ''), COALESCE(video_path, ''), COALESCE(thumbnail_path, ''), COALESCE(video_duration, 0), COALESCE(video_title, '') FROM generated_content WHERE id = ?",
 		id,
-	).Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID)
+	).Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID, &gc.IsComment, &gc.SourceType, &gc.SourceCommitID, &gc.CodeImagePath, &gc.CodeImageDescription, &gc.VideoPath, &gc.ThumbnailPath, &gc.VideoDuration, &gc.VideoTitle)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -452,6 +551,37 @@ func (db *DB) UpdateGeneratedContentText(id int64, content string) error {
 	_, err := db.conn.Exec("UPDATE generated_content SET generated_content = ? WHERE id = ?", content, id)
 	if err != nil {
 		return fmt.Errorf("updating generated content text: %w", err)
+	}
+	return nil
+}
+
+// UpdateGeneratedContentIsRepost updates the is_repost flag of a generated content record.
+func (db *DB) UpdateGeneratedContentIsRepost(id int64, isRepost bool) error {
+	val := 0
+	if isRepost {
+		val = 1
+	}
+	_, err := db.conn.Exec("UPDATE generated_content SET is_repost = ? WHERE id = ?", val, id)
+	if err != nil {
+		return fmt.Errorf("updating generated content is_repost: %w", err)
+	}
+	return nil
+}
+
+// UpdateGeneratedContentQuoteTweetID updates the quote_tweet_id of a generated content record.
+func (db *DB) UpdateGeneratedContentQuoteTweetID(id int64, quoteTweetID string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET quote_tweet_id = ? WHERE id = ?", quoteTweetID, id)
+	if err != nil {
+		return fmt.Errorf("updating generated content quote_tweet_id: %w", err)
+	}
+	return nil
+}
+
+// UpdateCodeImageDescription updates the code image description of a generated content record.
+func (db *DB) UpdateCodeImageDescription(id int64, description string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET code_image_description = ? WHERE id = ?", description, id)
+	if err != nil {
+		return fmt.Errorf("updating code image description: %w", err)
 	}
 	return nil
 }
