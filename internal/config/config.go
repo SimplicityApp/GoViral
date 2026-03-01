@@ -12,8 +12,11 @@ import (
 type Config struct {
 	X        XConfig        `yaml:"x"`
 	LinkedIn LinkedInConfig `yaml:"linkedin"`
+	YouTube  YouTubeConfig  `yaml:"youtube"`
+	TikTok   TikTokConfig   `yaml:"tiktok"`
 	Claude   ClaudeConfig   `yaml:"claude"`
 	Gemini   GeminiConfig   `yaml:"gemini"`
+	GitHub   GitHubConfig   `yaml:"github"`
 	Server   ServerConfig   `yaml:"server"`
 	Daemon   DaemonConfig   `yaml:"daemon"`
 	Telegram TelegramConfig `yaml:"telegram"`
@@ -22,15 +25,51 @@ type Config struct {
 	DBPath         string   `yaml:"db_path"`
 }
 
+// YouTubeConfig contains YouTube Data API v3 credentials.
+type YouTubeConfig struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	AccessToken  string `yaml:"access_token"`
+	RefreshToken string `yaml:"refresh_token"`
+	TokenExpiry  string `yaml:"token_expiry,omitempty"`
+	ChannelID    string `yaml:"channel_id,omitempty"`
+}
+
+// TikTokConfig contains TikTok Content Posting API credentials.
+type TikTokConfig struct {
+	ClientKey    string `yaml:"client_key"`
+	ClientSecret string `yaml:"client_secret"`
+	AccessToken  string `yaml:"access_token"`
+	RefreshToken string `yaml:"refresh_token"`
+	TokenExpiry  string `yaml:"token_expiry,omitempty"`
+	Username     string `yaml:"username"`
+}
+
+// GitHubConfig contains GitHub API settings.
+type GitHubConfig struct {
+	PersonalAccessToken string `yaml:"personal_access_token"`
+	DefaultOwner        string `yaml:"default_owner"`
+	DefaultRepo         string `yaml:"default_repo"`
+}
+
 // DaemonConfig contains autopilot daemon settings.
 type DaemonConfig struct {
-	Enabled       bool              `yaml:"enabled"`
-	Schedules     map[string]string `yaml:"schedules"`       // platform → cron expr
-	MaxPerBatch   int               `yaml:"max_per_batch"`
-	AutoSkipAfter string            `yaml:"auto_skip_after"` // duration string e.g. "2h"
-	TrendingLimit int               `yaml:"trending_limit"`
-	MinLikes      int               `yaml:"min_likes"`
-	Period        string            `yaml:"period"`
+	Enabled            bool              `yaml:"enabled"`
+	Schedules          map[string]string `yaml:"schedules"`             // platform → cron expr
+	MaxPerBatch        int               `yaml:"max_per_batch"`
+	AutoSkipAfter      string            `yaml:"auto_skip_after"`       // duration string e.g. "2h"
+	TrendingLimit      int               `yaml:"trending_limit"`
+	MinLikes           int               `yaml:"min_likes"`
+	Period             string            `yaml:"period"`
+	DedupActionedPosts bool              `yaml:"dedup_actioned_posts"`  // skip posts the user already acted on
+	DedupLookbackHours int              `yaml:"dedup_lookback_hours"`  // how far back to look for actioned posts
+	CommentsEnabled    bool             `yaml:"comments_enabled"`      // enable comment generation in daemon
+	CommentsPerBatch   int              `yaml:"comments_per_batch"`    // number of comments per batch (default 3)
+	DigestMode         bool             `yaml:"digest_mode"`           // true = accumulate-then-digest; false = immediate
+	DigestSchedule     string           `yaml:"digest_schedule"`       // cron expr for nightly digest, e.g. "0 21 * * *"
+	DigestMaxPosts     int              `yaml:"digest_max_posts"`      // max winners per digest (default 5)
+	AutoPublish        bool             `yaml:"auto_publish"`          // auto-publish best content at digest time
+	AutoPublishMaxPosts int             `yaml:"auto_publish_max_posts"` // safety cap per digest (default 1)
 }
 
 // TelegramConfig contains Telegram Bot API settings.
@@ -146,6 +185,31 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Daemon.Period == "" {
 		cfg.Daemon.Period = "week"
+	}
+	// DedupActionedPosts defaults to true via zero-value awareness:
+	// we use a separate "was it explicitly set?" check — but since YAML
+	// unmarshals missing bool as false, we always default it on.
+	// A user must explicitly set dedup_actioned_posts: false to disable.
+	if !cfg.Daemon.DedupActionedPosts && cfg.Daemon.DedupLookbackHours == 0 {
+		cfg.Daemon.DedupActionedPosts = true
+	}
+	if cfg.Daemon.DedupLookbackHours == 0 {
+		cfg.Daemon.DedupLookbackHours = 24
+	}
+
+	if cfg.Daemon.CommentsPerBatch == 0 {
+		cfg.Daemon.CommentsPerBatch = 3
+	}
+
+	if cfg.Daemon.AutoPublishMaxPosts <= 0 {
+		cfg.Daemon.AutoPublishMaxPosts = 1
+	}
+
+	if cfg.Daemon.DigestSchedule == "" {
+		cfg.Daemon.DigestSchedule = "0 21 * * *" // 9 PM daily
+	}
+	if cfg.Daemon.DigestMaxPosts <= 0 {
+		cfg.Daemon.DigestMaxPosts = 5
 	}
 
 	if len(cfg.LinkedInNiches) == 0 {

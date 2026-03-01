@@ -52,3 +52,28 @@ type LinkedInPoster interface {
 type LinkedInReposter interface {
 	Repost(ctx context.Context, postURN string, text string) (string, error)
 }
+
+// LinkedInCommenter defines the interface for commenting on LinkedIn posts.
+type LinkedInCommenter interface {
+	// CreateComment posts a comment on a LinkedIn post.
+	// threadURN is the optional urn:li:ugcPost:N URN for the LinkedIn comment API's
+	// threadUrn field; pass "" when unknown and linkitin will derive it from postURN.
+	CreateComment(ctx context.Context, postURN string, threadURN string, text string) (string, error)
+}
+
+// YouTubePoster uploads short videos to YouTube (auto-detected as Shorts).
+type YouTubePoster interface {
+	UploadVideo(ctx context.Context, videoPath string, title string, description string, tags []string) (string, error)
+	UploadVideoWithThumbnail(ctx context.Context, videoPath string, thumbnailPath string, title string, description string, tags []string) (string, error)
+}
+
+// TikTokPoster uploads videos to TikTok.
+type TikTokPoster interface {
+	UploadVideo(ctx context.Context, videoPath string, description string, tags []string) (string, error)
+	ScheduleVideo(ctx context.Context, videoPath string, description string, tags []string, scheduledAt time.Time) (string, error)
+}
+
+// VideoFetcher fetches trending video content for discovery.
+type VideoFetcher interface {
+	FetchTrendingVideos(ctx context.Context, niches []string, limit int) ([]TrendingPost, error)
+}

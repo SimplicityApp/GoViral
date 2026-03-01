@@ -19,6 +19,15 @@ type GeneratedContent struct {
 	ImagePath        string
 	IsRepost         bool
 	QuoteTweetID     string
+	IsComment        bool   // When true, this is a comment; QuoteTweetID holds the parent post URN
+	SourceType       string // "trending" or "commit"
+	SourceCommitID   int64
+	CodeImagePath        string
+	CodeImageDescription string
+	VideoPath            string // local path to video file
+	ThumbnailPath        string // local path to thumbnail image
+	VideoDuration        int    // duration in seconds
+	VideoTitle           string // title for YouTube (not used by TikTok)
 }
 
 // ScheduledPost represents a post scheduled for future publishing.
