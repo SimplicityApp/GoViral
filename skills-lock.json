@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "flyctl": {
+      "source": "sebastiaanwouters/dotagents",
+      "sourceType": "github",
+      "computedHash": "faabcaf0fe3663e00f3ee23f7f8ccca98ab26518be00777a9791985e2ff30166"
+    }
+  }
+}
