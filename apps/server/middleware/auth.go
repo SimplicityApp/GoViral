@@ -10,8 +10,8 @@ import (
 func Auth(apiKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip auth for health endpoint
-			if r.URL.Path == "/api/v1/health" {
+			// Skip auth for health and OAuth endpoints (browser redirects can't carry headers)
+			if r.URL.Path == "/api/v1/health" || strings.HasPrefix(r.URL.Path, "/api/v1/oauth/") {
 				next.ServeHTTP(w, r)
 				return
 			}
