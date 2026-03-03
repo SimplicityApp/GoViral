@@ -109,6 +109,33 @@ func (c *TwikitClient) ExtractCookies(ctx context.Context) error {
 	return nil
 }
 
+// LoginWithCookies writes auth_token and ct0 directly to twikit_cookies.json.
+// Use this when Chrome-based extraction is unavailable (e.g. server deployment).
+func (c *TwikitClient) LoginWithCookies(ctx context.Context, authToken string, ct0 string) error {
+	cookies := map[string]string{
+		"auth_token": authToken,
+		"ct0":        ct0,
+	}
+	data, err := json.MarshalIndent(cookies, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling cookies: %w", err)
+	}
+
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
+	if err := os.MkdirAll(filepath.Dir(cookiePath), 0755); err != nil {
+		return fmt.Errorf("creating config dir: %w", err)
+	}
+	if err := os.WriteFile(cookiePath, data, 0600); err != nil {
+		return fmt.Errorf("writing cookie file: %w", err)
+	}
+	return nil
+}
+
+// CookieFilePath returns the path to the twikit cookie file.
+func (c *TwikitClient) CookieFilePath() string {
+	return filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
+}
+
 // PostTweet creates a new tweet via the twikit Python subprocess.
 // Retries once if twikit reports a stale ct0 token (cookies refreshed).
 func (c *TwikitClient) PostTweet(ctx context.Context, text string) (string, error) {

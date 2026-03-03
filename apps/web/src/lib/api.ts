@@ -1,6 +1,6 @@
 import type { ProgressEvent } from './types'
 
-const BASE_URL = '/api/v1'
+export const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 class ApiError extends Error {
   status: number

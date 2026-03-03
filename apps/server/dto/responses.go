@@ -114,6 +114,7 @@ type ConfigXResponse struct {
 	ClientSecret string `json:"client_secret"`
 	Username     string `json:"username"`
 	HasAuth      bool   `json:"has_auth"`
+	HasTwikitAuth bool  `json:"has_twikit_auth"`
 }
 
 type ConfigLinkedInResponse struct {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
+import { BASE_URL } from '@/lib/api'
 import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePublishMutation, useScheduleMutation } from '@/hooks/usePublish'
 import { useUpdateContentMutation, useDeleteContentMutation } from '@/hooks/useHistory'
@@ -99,9 +100,9 @@ export function PublishPanel({ items, initialSelectedId }: PublishPanelProps) {
   const selected = items.find((i) => i.id === selectedId)
 
   const imageUrl = selected?.code_image_path
-    ? `/api/v1/content/${selected.id}/code-image`
+    ? `${BASE_URL}/content/${selected.id}/code-image`
     : selected?.image_path
-      ? `/api/v1/content/${selected.id}/image`
+      ? `${BASE_URL}/content/${selected.id}/image`
       : null
 
   // Reset editedContent when selection changes

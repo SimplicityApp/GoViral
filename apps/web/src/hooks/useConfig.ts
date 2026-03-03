@@ -18,6 +18,7 @@ export interface AppConfig {
     client_secret: string
     username: string
     has_auth: boolean
+    has_twikit_auth: boolean
   }
   linkedin: {
     client_id: string

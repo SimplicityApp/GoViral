@@ -8,7 +8,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Eye, EyeOff, X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { apiClient } from '@/lib/api'
+import { apiClient, BASE_URL } from '@/lib/api'
 
 function MaskedInput({
   label,
@@ -157,6 +157,10 @@ export function Settings() {
   const updateConfig = useUpdateConfigMutation()
   const queryClient = useQueryClient()
   const [extractingCookies, setExtractingCookies] = useState(false)
+  const [xCookieForm, setXCookieForm] = useState({ auth_token: '', ct0: '' })
+  const [savingXCookies, setSavingXCookies] = useState(false)
+  const [liCookieForm, setLiCookieForm] = useState({ li_at: '', jsessionid: '' })
+  const [savingLiCookies, setSavingLiCookies] = useState(false)
 
   const { data: daemonConfig } = useDaemonConfigQuery()
   const updateDaemonConfig = useUpdateDaemonConfigMutation()
@@ -353,28 +357,127 @@ export function Settings() {
         </div>
         <div className="mt-3 flex items-center gap-2">
           <a
-            href="/api/v1/oauth/x/login"
+            href={`${BASE_URL}/oauth/x/login`}
             className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
           >
-            Connect X
+            Connect X (OAuth)
           </a>
           <a
-            href="/api/v1/oauth/linkedin/login"
+            href={`${BASE_URL}/oauth/linkedin/login`}
             className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
           >
-            Connect LinkedIn
+            Connect LinkedIn (OAuth)
           </a>
-          {config?.linkedin.has_linkitin_auth ? (
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          X Cookie Auth (Twikit)
+        </h3>
+        <div className="mb-2 flex items-center gap-2">
+          {config?.x.has_twikit_auth ? (
             <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
-              Linkitin Connected
+              Connected
             </span>
           ) : (
             <span className="rounded-full bg-gray-500/15 px-3 py-1 text-xs font-medium text-gray-400">
-              Linkitin Not Set Up
+              Not Set Up
             </span>
           )}
         </div>
-        <div className="mt-2">
+        <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+          Paste auth_token and ct0 from your browser&apos;s X cookies. Required for posting via twikit fallback.
+        </p>
+        <div className="flex flex-col gap-3">
+          <MaskedInput
+            label="auth_token"
+            value={xCookieForm.auth_token}
+            onChange={(v) => setXCookieForm((f) => ({ ...f, auth_token: v }))}
+          />
+          <MaskedInput
+            label="ct0"
+            value={xCookieForm.ct0}
+            onChange={(v) => setXCookieForm((f) => ({ ...f, ct0: v }))}
+          />
+          <button
+            onClick={async () => {
+              if (!xCookieForm.auth_token || !xCookieForm.ct0) {
+                toast.error('Both auth_token and ct0 are required')
+                return
+              }
+              setSavingXCookies(true)
+              try {
+                await apiClient.post('/x/login-cookies', xCookieForm)
+                toast.success('X cookies saved')
+                setXCookieForm({ auth_token: '', ct0: '' })
+                void queryClient.invalidateQueries({ queryKey: ['config'] })
+              } catch {
+                toast.error('Failed to save X cookies')
+              } finally {
+                setSavingXCookies(false)
+              }
+            }}
+            disabled={savingXCookies}
+            className="w-fit rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          >
+            {savingXCookies ? 'Saving...' : 'Save X Cookies'}
+          </button>
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          LinkedIn Cookie Auth (Linkitin)
+        </h3>
+        <div className="mb-2 flex items-center gap-2">
+          {config?.linkedin.has_linkitin_auth ? (
+            <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
+              Connected
+            </span>
+          ) : (
+            <span className="rounded-full bg-gray-500/15 px-3 py-1 text-xs font-medium text-gray-400">
+              Not Set Up
+            </span>
+          )}
+        </div>
+        <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+          Paste li_at and JSESSIONID from your browser&apos;s LinkedIn cookies. Required for posting via linkitin fallback.
+        </p>
+        <div className="flex flex-col gap-3">
+          <MaskedInput
+            label="li_at"
+            value={liCookieForm.li_at}
+            onChange={(v) => setLiCookieForm((f) => ({ ...f, li_at: v }))}
+          />
+          <MaskedInput
+            label="JSESSIONID"
+            value={liCookieForm.jsessionid}
+            onChange={(v) => setLiCookieForm((f) => ({ ...f, jsessionid: v }))}
+          />
+          <button
+            onClick={async () => {
+              if (!liCookieForm.li_at || !liCookieForm.jsessionid) {
+                toast.error('Both li_at and JSESSIONID are required')
+                return
+              }
+              setSavingLiCookies(true)
+              try {
+                await apiClient.post('/linkedin/login-cookies', liCookieForm)
+                toast.success('LinkedIn cookies saved')
+                setLiCookieForm({ li_at: '', jsessionid: '' })
+                void queryClient.invalidateQueries({ queryKey: ['config'] })
+              } catch {
+                toast.error('Failed to save LinkedIn cookies')
+              } finally {
+                setSavingLiCookies(false)
+              }
+            }}
+            disabled={savingLiCookies}
+            className="w-fit rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          >
+            {savingLiCookies ? 'Saving...' : 'Save LinkedIn Cookies'}
+          </button>
           <button
             onClick={async () => {
               setExtractingCookies(true)
@@ -389,9 +492,9 @@ export function Settings() {
               }
             }}
             disabled={extractingCookies}
-            className="rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)] disabled:opacity-50"
+            className="w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-card)] disabled:opacity-50"
           >
-            {extractingCookies ? 'Extracting...' : 'Extract Cookies from Chrome'}
+            {extractingCookies ? 'Extracting...' : 'Extract from Chrome (local only)'}
           </button>
         </div>
       </section>

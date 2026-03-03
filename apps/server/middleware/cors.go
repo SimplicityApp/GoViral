@@ -40,12 +40,17 @@ func isAllowed(origin string, originSet map[string]bool, allowedOrigins []string
 	if originSet[origin] {
 		return true
 	}
-	// Support wildcard subdomains like "*.example.com"
+	// Support wildcard subdomains like "https://*.vercel.app"
 	for _, allowed := range allowedOrigins {
-		if strings.HasPrefix(allowed, "*.") {
-			suffix := allowed[1:] // ".example.com"
-			if strings.HasSuffix(origin, suffix) {
-				return true
+		if idx := strings.Index(allowed, "*."); idx >= 0 {
+			prefix := allowed[:idx] // "https://"
+			suffix := allowed[idx+1:] // ".vercel.app"
+			if strings.HasPrefix(origin, prefix) && strings.HasSuffix(origin, suffix) {
+				// Ensure there's something between prefix and suffix (not empty subdomain)
+				middle := origin[len(prefix) : len(origin)-len(suffix)]
+				if len(middle) > 0 && !strings.Contains(middle, "/") {
+					return true
+				}
 			}
 		}
 	}

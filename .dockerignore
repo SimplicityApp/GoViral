@@ -1,0 +1,14 @@
+.git
+apps/web/node_modules
+apps/web/dist
+*.db
+config.yaml
+.env
+.env.*
+docs/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

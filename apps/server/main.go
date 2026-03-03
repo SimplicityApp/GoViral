@@ -166,7 +166,8 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	// Comment handler
 	commentH := handler.NewCommentHandler(publishSvc, generateSvc, s.DB)
 
-	// LinkedIn cookies handler
+	// Cookie management handlers
+	xCookiesH := handler.NewXCookiesHandler(s.Cfg)
 	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg)
 
 	// Auth handler
@@ -238,6 +239,11 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 
 		// TikTok video upload
 		r.Post("/tiktok/upload", tiktokH.Upload)
+
+		// X cookie management
+		r.Post("/x/extract-cookies", xCookiesH.ExtractCookies)
+		r.Post("/x/login-cookies", xCookiesH.LoginCookies)
+		r.Get("/x/cookies/status", xCookiesH.Status)
 
 		// LinkedIn cookie management
 		r.Post("/linkedin/extract-cookies", linkedinCookiesH.ExtractCookies)

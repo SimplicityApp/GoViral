@@ -1,17 +1,13 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
+import { apiClient } from '../../lib/api'
 
 const STORAGE_KEY = 'goviral_api_key'
 
 async function checkAuth(): Promise<boolean> {
   try {
-    const headers: Record<string, string> = {}
-    const apiKey = localStorage.getItem(STORAGE_KEY)
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-    const res = await fetch('/api/v1/config', { headers })
-    return res.ok
+    await apiClient.get('/config')
+    return true
   } catch {
     return false
   }

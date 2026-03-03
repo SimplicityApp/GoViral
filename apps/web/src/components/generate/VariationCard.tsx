@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
+import { BASE_URL } from '@/lib/api'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Check, X, Pencil } from 'lucide-react'
 
@@ -23,8 +24,8 @@ function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId
 
     // Prefer content-specific image (AI-selected snippet), fall back to commit-level
     const url = contentId > 0
-      ? `/api/v1/content/${contentId}/code-image`
-      : `/api/v1/repos/commits/${commitId}/image`
+      ? `${BASE_URL}/content/${contentId}/code-image`
+      : `${BASE_URL}/repos/commits/${commitId}/image`
 
     fetch(url, { headers })
       .then((res) => {

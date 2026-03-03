@@ -32,13 +32,14 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 			Model:  h.cfg.Gemini.Model,
 		},
 		X: dto.ConfigXResponse{
-			APIKey:       maskSecret(h.cfg.X.APIKey),
-			APISecret:    maskSecret(h.cfg.X.APISecret),
-			BearerToken:  maskSecret(h.cfg.X.BearerToken),
-			ClientID:     maskSecret(h.cfg.X.ClientID),
-			ClientSecret: maskSecret(h.cfg.X.ClientSecret),
-			Username:     h.cfg.X.Username,
-			HasAuth:      h.cfg.X.AccessToken != "",
+			APIKey:        maskSecret(h.cfg.X.APIKey),
+			APISecret:     maskSecret(h.cfg.X.APISecret),
+			BearerToken:   maskSecret(h.cfg.X.BearerToken),
+			ClientID:      maskSecret(h.cfg.X.ClientID),
+			ClientSecret:  maskSecret(h.cfg.X.ClientSecret),
+			Username:      h.cfg.X.Username,
+			HasAuth:       h.cfg.X.AccessToken != "",
+			HasTwikitAuth: twikitCookiesExist(),
 		},
 		LinkedIn: dto.ConfigLinkedInResponse{
 			ClientID:        maskSecret(h.cfg.LinkedIn.ClientID),
@@ -74,6 +75,12 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, resp)
+}
+
+func twikitCookiesExist() bool {
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
+	_, err := os.Stat(cookiePath)
+	return err == nil
 }
 
 func linkitinCookiesExist() bool {
