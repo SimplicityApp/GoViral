@@ -3,9 +3,10 @@ import { useConfigQuery, useUpdateConfigMutation } from '@/hooks/useConfig'
 import type { UpdateConfigPayload } from '@/hooks/useConfig'
 import { useDaemonConfigQuery, useUpdateDaemonConfigMutation } from '@/hooks/useDaemon'
 import { usePersonaQuery } from '@/hooks/usePersona'
+import { useExtensionCookies } from '@/hooks/useExtensionCookies'
 import { usePlatformStore } from '@/stores/platform-store'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import { Eye, EyeOff, X, Plus } from 'lucide-react'
+import { Eye, EyeOff, X, Plus, Puzzle, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiClient, BASE_URL } from '@/lib/api'
@@ -156,7 +157,7 @@ export function Settings() {
   const { data: persona } = usePersonaQuery(activePlatform)
   const updateConfig = useUpdateConfigMutation()
   const queryClient = useQueryClient()
-  const [extractingCookies, setExtractingCookies] = useState(false)
+  const { extension, extracting: extensionExtracting, extractCookies } = useExtensionCookies()
   const [xCookieForm, setXCookieForm] = useState({ auth_token: '', ct0: '' })
   const [savingXCookies, setSavingXCookies] = useState(false)
   const [liCookieForm, setLiCookieForm] = useState({ li_at: '', jsessionid: '' })
@@ -373,6 +374,88 @@ export function Settings() {
 
       <section className="mb-8">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          <Puzzle size={14} className="mr-1.5 inline" />
+          Browser Cookie Sync
+        </h3>
+        {extension.available ? (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">
+                Extension detected{extension.version ? ` v${extension.version}` : ''}
+              </span>
+            </div>
+            <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+              One-click extraction of X and LinkedIn cookies from your browser.
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  const cookies = await extractCookies()
+                  let xOk = false
+                  let liOk = false
+
+                  if (cookies.x) {
+                    try {
+                      await apiClient.post('/x/login-cookies', cookies.x)
+                      xOk = true
+                    } catch {
+                      toast.error('Failed to save X cookies')
+                    }
+                  }
+
+                  if (cookies.linkedin) {
+                    try {
+                      await apiClient.post('/linkedin/login-cookies', cookies.linkedin)
+                      liOk = true
+                    } catch {
+                      toast.error('Failed to save LinkedIn cookies')
+                    }
+                  }
+
+                  void queryClient.invalidateQueries({ queryKey: ['config'] })
+
+                  if (xOk && liOk) {
+                    toast.success('X and LinkedIn cookies synced')
+                  } else if (xOk) {
+                    toast.success('X cookies synced' + (!cookies.linkedin ? ' (not logged into LinkedIn)' : ''))
+                  } else if (liOk) {
+                    toast.success('LinkedIn cookies synced' + (!cookies.x ? ' (not logged into X)' : ''))
+                  } else if (!cookies.x && !cookies.linkedin) {
+                    toast.error('No cookies found — log into X or LinkedIn first')
+                  }
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Cookie extraction failed')
+                }
+              }}
+              disabled={extensionExtracting}
+              className="flex items-center gap-2 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+            >
+              <Download size={16} />
+              {extensionExtracting ? 'Extracting...' : 'Extract & Sync All Cookies'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full bg-yellow-500/15 px-3 py-1 text-xs font-medium text-yellow-400">
+                Extension not detected
+              </span>
+            </div>
+            <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm text-[var(--color-text-secondary)]">
+              <p className="mb-2 font-medium text-[var(--color-text)]">Install the GoViral extension for one-click cookie sync:</p>
+              <ol className="list-inside list-decimal space-y-1 text-xs">
+                <li>Open <code className="rounded bg-[var(--color-border)] px-1">chrome://extensions</code></li>
+                <li>Enable <strong>Developer mode</strong> (top right)</li>
+                <li>Click <strong>Load unpacked</strong> and select the <code className="rounded bg-[var(--color-border)] px-1">apps/extension</code> folder</li>
+                <li>Refresh this page</li>
+              </ol>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
           X Cookie Auth (Twikit)
         </h3>
         <div className="mb-2 flex items-center gap-2">
@@ -477,24 +560,6 @@ export function Settings() {
             className="w-fit rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
           >
             {savingLiCookies ? 'Saving...' : 'Save LinkedIn Cookies'}
-          </button>
-          <button
-            onClick={async () => {
-              setExtractingCookies(true)
-              try {
-                await apiClient.post('/linkedin/extract-cookies', {})
-                toast.success('LinkedIn cookies extracted from Chrome')
-                void queryClient.invalidateQueries({ queryKey: ['config'] })
-              } catch {
-                toast.error('Failed to extract LinkedIn cookies from Chrome')
-              } finally {
-                setExtractingCookies(false)
-              }
-            }}
-            disabled={extractingCookies}
-            className="w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-card)] disabled:opacity-50"
-          >
-            {extractingCookies ? 'Extracting...' : 'Extract from Chrome (local only)'}
           </button>
         </div>
       </section>
