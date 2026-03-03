@@ -158,6 +158,10 @@ export function Settings() {
   const updateConfig = useUpdateConfigMutation()
   const queryClient = useQueryClient()
   const { extension, extracting: extensionExtracting, extractCookies } = useExtensionCookies()
+  const [lastExtracted, setLastExtracted] = useState<{
+    x: { auth_token: string; ct0: string } | null
+    linkedin: { li_at: string; jsessionid: string } | null
+  } | null>(null)
   const [xCookieForm, setXCookieForm] = useState({ auth_token: '', ct0: '' })
   const [savingXCookies, setSavingXCookies] = useState(false)
   const [liCookieForm, setLiCookieForm] = useState({ li_at: '', jsessionid: '' })
@@ -391,6 +395,7 @@ export function Settings() {
               onClick={async () => {
                 try {
                   const cookies = await extractCookies()
+                  setLastExtracted(cookies)
                   let xOk = false
                   let liOk = false
 
@@ -433,6 +438,32 @@ export function Settings() {
               <Download size={16} />
               {extensionExtracting ? 'Extracting...' : 'Extract & Sync All Cookies'}
             </button>
+            {lastExtracted && (
+              <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-3 text-xs font-mono">
+                {lastExtracted.x ? (
+                  <div className="mb-2">
+                    <span className="font-sans font-medium text-[var(--color-text)]">X</span>
+                    <div className="mt-1 space-y-0.5 text-[var(--color-text-secondary)]">
+                      <div>auth_token: {lastExtracted.x.auth_token.slice(0, 8)}...{lastExtracted.x.auth_token.slice(-4)}</div>
+                      <div>ct0: {lastExtracted.x.ct0.slice(0, 8)}...{lastExtracted.x.ct0.slice(-4)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-2 text-[var(--color-text-secondary)]">X: not logged in</div>
+                )}
+                {lastExtracted.linkedin ? (
+                  <div>
+                    <span className="font-sans font-medium text-[var(--color-text)]">LinkedIn</span>
+                    <div className="mt-1 space-y-0.5 text-[var(--color-text-secondary)]">
+                      <div>li_at: {lastExtracted.linkedin.li_at.slice(0, 8)}...{lastExtracted.linkedin.li_at.slice(-4)}</div>
+                      <div>JSESSIONID: {lastExtracted.linkedin.jsessionid.slice(0, 8)}...{lastExtracted.linkedin.jsessionid.slice(-4)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[var(--color-text-secondary)]">LinkedIn: not logged in</div>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
