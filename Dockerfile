@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /goviral ./apps/server
+RUN CGO_ENABLED=0 GOOS=linux go build -tags embedweb -o /goviral ./apps/server
 
 # Stage 2: Runtime with Python + Chromium
 FROM python:3.12-slim-bookworm
