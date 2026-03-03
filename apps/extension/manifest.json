@@ -8,6 +8,7 @@
     "*://*.x.com/*",
     "*://*.linkedin.com/*",
     "https://*.fly.dev/*",
+    "https://*.simple-tech.app/*",
     "http://localhost/*"
   ],
   "background": {
@@ -17,7 +18,8 @@
     {
       "matches": [
         "http://localhost/*",
-        "https://*.fly.dev/*"
+        "https://*.fly.dev/*",
+        "https://*.simple-tech.app/*"
       ],
       "js": ["content.js"],
       "run_at": "document_start"

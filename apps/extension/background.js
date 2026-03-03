@@ -3,6 +3,7 @@
 const ALLOWED_ORIGIN_PATTERNS = [
   /^http:\/\/localhost(:\d+)?$/,
   /^https:\/\/[^/]+\.fly\.dev$/,
+  /^https:\/\/[^/]+\.simple-tech\.app$/,
 ];
 
 function isAllowedOrigin(origin) {
