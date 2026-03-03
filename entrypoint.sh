@@ -6,6 +6,18 @@ if [ -d /home/goviral/.goviral ]; then
   chown -R goviral:goviral /home/goviral/.goviral
 fi
 
+# Create minimal config if missing (first deploy bootstrap)
+if [ ! -f /home/goviral/.goviral/config.yaml ]; then
+  echo "No config found, creating default config.yaml..."
+  gosu goviral sh -c 'cat > /home/goviral/.goviral/config.yaml << '\''CONF'\''
+server:
+  port: 8080
+  api_key: "changeme"
+  allowed_origins:
+    - "*"
+CONF'
+fi
+
 # Warm up Python venv + packages on first boot so the first API call isn't slow.
 # Skip if venv already exists (persisted on volume across restarts).
 if [ ! -f /home/goviral/.goviral/venv/bin/python3 ]; then
