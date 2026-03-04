@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { RootLayout } from '@/components/layout/RootLayout'
 import { PlatformLayout } from '@/components/layout/PlatformLayout'
-import { defaultPlatform } from '@/lib/platforms'
+import { OnboardingRedirect } from '@/components/OnboardingRedirect'
 import { Dashboard } from '@/pages/Dashboard'
 import { Posts } from '@/pages/Posts'
 import { Trending } from '@/pages/Trending'
@@ -12,6 +12,7 @@ import { Settings } from '@/pages/Settings'
 import { Autopilot } from '@/pages/Autopilot'
 import { CodeToPost } from '@/pages/CodeToPost'
 import { VideoPublish } from '@/pages/VideoPublish'
+import { Onboarding } from '@/pages/Onboarding'
 import { Terms } from '@/pages/Terms'
 import { Privacy } from '@/pages/Privacy'
 
@@ -19,7 +20,8 @@ function App() {
   return (
     <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to={`/${defaultPlatform}/dashboard`} replace />} />
+          <Route path="/" element={<OnboardingRedirect />} />
+          <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route element={<RootLayout />}>

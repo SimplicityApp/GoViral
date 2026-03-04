@@ -19,12 +19,16 @@ export interface AppConfig {
     username: string
     has_auth: boolean
     has_twikit_auth: boolean
+    auth_token?: string
+    ct0?: string
   }
   linkedin: {
     client_id: string
     client_secret: string
     has_auth: boolean
     has_linkitin_auth: boolean
+    li_at?: string
+    jsessionid?: string
   }
   niches: string[]
   linkedin_niches: string[]

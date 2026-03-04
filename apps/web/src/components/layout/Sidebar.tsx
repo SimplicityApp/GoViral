@@ -11,6 +11,7 @@ import {
   Bot,
   Code,
   Video,
+  Compass,
 } from 'lucide-react'
 import { PlatformSwitcher } from './PlatformSwitcher'
 import { useUIStore } from '@/stores/ui-store'
@@ -90,6 +91,20 @@ export function Sidebar() {
           >
             <Settings size={18} />
             Settings
+          </NavLink>
+          <NavLink
+            to="/onboarding"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-card)] hover:text-[var(--color-text)]'
+              }`
+            }
+          >
+            <Compass size={18} />
+            Setup Guide
           </NavLink>
         </nav>
       </aside>

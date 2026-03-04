@@ -105,13 +105,18 @@ export function useExtensionLinkedIn() {
     setProgress('Discovering trending LinkedIn posts...')
     try {
       const result = await sendExtensionMessage('GOVIRAL_LINKEDIN_FETCH_TRENDING', { niches, period, count: limit })
+      console.log('[GoViral] fetchTrending result from extension:', result?.posts?.length ?? 0, 'posts')
       if (result.posts?.length) {
-        setProgress('Saving trending posts...')
+        setProgress(`Saving ${result.posts.length} trending posts...`)
         await apiClient.post('/trending/ingest', { platform: 'linkedin', posts: result.posts })
+      } else {
+        console.warn('[GoViral] fetchTrending: extension returned 0 posts')
+        setError('Extension returned 0 posts — check LinkedIn tab console for [GoViral] logs')
       }
       setProgress('')
       return result.posts || []
     } catch (err: any) {
+      console.error('[GoViral] fetchTrending error:', err)
       setError(err.message)
       throw err
     } finally {
