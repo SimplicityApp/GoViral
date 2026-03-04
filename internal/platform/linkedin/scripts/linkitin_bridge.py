@@ -52,6 +52,14 @@ ensure_package("linkitin")
 import asyncio
 import base64
 
+# On non-macOS platforms, disable Chrome data extraction (requires osascript).
+# Monkey-patch before importing LinkitinClient so it falls back to the REST API.
+if sys.platform != "darwin":
+    import linkitin.feed as _lf
+    async def _chrome_extract_noop(session, source, **kwargs):
+        return None
+    _lf._chrome_extract = _chrome_extract_noop
+
 from linkitin import LinkitinClient
 
 
@@ -208,17 +216,24 @@ async def main():
         pass
 
     if not loaded and os.path.exists(_CHROME_PROXY_MARKER):
-        # Chrome proxy mode was previously activated (extract-cookies used).
-        # Restore it: route all requests through Chrome's live session.
-        try:
-            from linkitin.chrome_proxy import chrome_validate_session
-            if chrome_validate_session():
-                client.session.use_chrome_proxy = True
-            else:
-                # Chrome no longer has a valid LinkedIn session — clear the marker.
+        if sys.platform != "darwin":
+            # Chrome proxy requires osascript (macOS only) — remove stale marker.
+            try:
                 os.unlink(_CHROME_PROXY_MARKER)
-        except Exception:
-            pass
+            except OSError:
+                pass
+        else:
+            # Chrome proxy mode was previously activated (extract-cookies used).
+            # Restore it: route all requests through Chrome's live session.
+            try:
+                from linkitin.chrome_proxy import chrome_validate_session
+                if chrome_validate_session():
+                    client.session.use_chrome_proxy = True
+                else:
+                    # Chrome no longer has a valid LinkedIn session — clear the marker.
+                    os.unlink(_CHROME_PROXY_MARKER)
+            except Exception:
+                pass
 
     for line in sys.stdin:
         line = line.strip()
