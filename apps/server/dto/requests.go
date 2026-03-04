@@ -1,5 +1,42 @@
 package dto
 
+type IngestPostsRequest struct {
+	Platform string       `json:"platform"`
+	Posts    []IngestPost `json:"posts"`
+}
+
+type IngestPost struct {
+	PlatformPostID string `json:"platform_post_id"`
+	Content        string `json:"content"`
+	Likes          int    `json:"likes"`
+	Reposts        int    `json:"reposts"`
+	Comments       int    `json:"comments"`
+	Impressions    int    `json:"impressions"`
+	PostedAt       string `json:"posted_at"`
+}
+
+type IngestTrendingRequest struct {
+	Platform string               `json:"platform"`
+	Posts    []IngestTrendingPost `json:"posts"`
+}
+
+type IngestTrendingPost struct {
+	PlatformPostID string   `json:"platform_post_id"`
+	AuthorUsername string   `json:"author_username"`
+	AuthorName     string   `json:"author_name"`
+	Content        string   `json:"content"`
+	Likes          int      `json:"likes"`
+	Reposts        int      `json:"reposts"`
+	Comments       int      `json:"comments"`
+	Impressions    int      `json:"impressions"`
+	NicheTags      []string `json:"niche_tags"`
+	PostedAt       string   `json:"posted_at"`
+}
+
+type IngestResponse struct {
+	Count int `json:"count"`
+}
+
 type FetchPostsRequest struct {
 	Platform string `json:"platform"` // "x", "linkedin", or "" for both
 }

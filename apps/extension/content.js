@@ -48,4 +48,60 @@ window.addEventListener("message", (event) => {
       }
     );
   }
+
+  if (type === "GOVIRAL_LINKEDIN_FETCH_POSTS") {
+    chrome.runtime.sendMessage(
+      { type: "GOVIRAL_LINKEDIN_FETCH_POSTS", count: event.data.count },
+      (response) => {
+        window.postMessage(
+          { type: "GOVIRAL_LINKEDIN_FETCH_POSTS_RESULT", requestId, ...response },
+          window.location.origin
+        );
+      }
+    );
+  }
+
+  if (type === "GOVIRAL_LINKEDIN_FETCH_FEED") {
+    chrome.runtime.sendMessage(
+      { type: "GOVIRAL_LINKEDIN_FETCH_FEED", count: event.data.count },
+      (response) => {
+        window.postMessage(
+          { type: "GOVIRAL_LINKEDIN_FETCH_FEED_RESULT", requestId, ...response },
+          window.location.origin
+        );
+      }
+    );
+  }
+
+  if (type === "GOVIRAL_LINKEDIN_SEARCH_POSTS") {
+    chrome.runtime.sendMessage(
+      {
+        type: "GOVIRAL_LINKEDIN_SEARCH_POSTS",
+        keywords: event.data.keywords,
+        count: event.data.count,
+      },
+      (response) => {
+        window.postMessage(
+          { type: "GOVIRAL_LINKEDIN_SEARCH_POSTS_RESULT", requestId, ...response },
+          window.location.origin
+        );
+      }
+    );
+  }
+
+  if (type === "GOVIRAL_LINKEDIN_FETCH_TRENDING") {
+    chrome.runtime.sendMessage(
+      {
+        type: "GOVIRAL_LINKEDIN_FETCH_TRENDING",
+        keywords: event.data.keywords,
+        count: event.data.count,
+      },
+      (response) => {
+        window.postMessage(
+          { type: "GOVIRAL_LINKEDIN_FETCH_TRENDING_RESULT", requestId, ...response },
+          window.location.origin
+        );
+      }
+    );
+  }
 });

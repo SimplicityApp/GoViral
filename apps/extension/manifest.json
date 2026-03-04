@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "GoViral Cookie Sync",
-  "version": "1.0.1",
-  "description": "Extract X and LinkedIn cookies for GoViral",
-  "permissions": ["cookies"],
+  "name": "GoViral",
+  "version": "1.1.0",
+  "description": "GoViral browser integration for X and LinkedIn",
+  "permissions": ["cookies", "scripting", "tabs"],
   "host_permissions": [
     "*://*.x.com/*",
     "*://*.linkedin.com/*",
@@ -23,6 +23,12 @@
       ],
       "js": ["content.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.linkedin.com/*"],
+      "js": ["linkedin-content.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
     }
   ]
 }

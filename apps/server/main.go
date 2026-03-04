@@ -226,6 +226,12 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 
 		r.Patch("/config", configWriteH.Update)
 
+		// Ingest endpoints (Chrome extension)
+		ingestPostsH := handler.NewIngestPostsHandler(s.DB)
+		ingestTrendingH := handler.NewIngestTrendingHandler(s.DB)
+		r.Post("/posts/ingest", ingestPostsH.Post)
+		r.Post("/trending/ingest", ingestTrendingH.Post)
+
 		// Long-running operations (SSE or 202)
 		r.Post("/posts/fetch", fetchPostsH.Post)
 		r.Post("/trending/discover", discoverH.Post)

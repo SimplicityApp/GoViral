@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { useSSEMutation } from './useSSE'
+import { useExtensionCookies } from './useExtensionCookies'
+import { useExtensionLinkedIn } from './useExtensionLinkedIn'
 import type { TrendingPost } from '@/lib/types'
 
 interface TrendingFilters {
@@ -19,5 +21,28 @@ export function useTrendingQuery(filters?: TrendingFilters) {
 }
 
 export function useDiscoverMutation() {
-  return useSSEMutation<TrendingPost[]>('/trending/discover')
+  const queryClient = useQueryClient()
+  const { extension } = useExtensionCookies()
+  const extensionLinkedIn = useExtensionLinkedIn()
+
+  const sseMutation = useSSEMutation<TrendingPost[]>('/trending/discover')
+
+  return {
+    ...sseMutation,
+    mutate: (body: { platform: string; keywords?: string; limit?: number }) => {
+      if (body.platform === 'linkedin' && extension.available) {
+        const keywords = body.keywords || ''
+        extensionLinkedIn.fetchTrending(keywords, body.limit).then(() => {
+          void queryClient.invalidateQueries({ queryKey: ['trending'] })
+        })
+      } else {
+        sseMutation.mutate(body)
+      }
+    },
+    isRunning: sseMutation.isRunning || extensionLinkedIn.isRunning,
+    progress: extensionLinkedIn.isRunning
+      ? { type: 'progress' as const, message: extensionLinkedIn.progress, percentage: 0 }
+      : sseMutation.progress,
+    error: extensionLinkedIn.error || sseMutation.error,
+  }
 }
