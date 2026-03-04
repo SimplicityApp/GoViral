@@ -29,9 +29,9 @@ export function useDiscoverMutation() {
 
   return {
     ...sseMutation,
-    mutate: (body: { platform: string; keywords?: string; limit?: number }) => {
+    mutate: (body: { platform: string; period?: string; min_likes?: number; niche?: string; keywords?: string; limit?: number }) => {
       if (body.platform === 'linkedin' && extension.available) {
-        const keywords = body.keywords || ''
+        const keywords = body.keywords || body.niche || ''
         extensionLinkedIn.fetchTrending(keywords, body.limit).then(() => {
           void queryClient.invalidateQueries({ queryKey: ['trending'] })
         })
