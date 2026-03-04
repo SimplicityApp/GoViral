@@ -46,7 +46,7 @@ func (m *mockLinkedinPoster) Repost(_ context.Context, _ string, _ string) (stri
 	return m.postID, m.err
 }
 
-func (m *mockLinkedinPoster) CreateComment(_ context.Context, _ string, _ string) (string, error) {
+func (m *mockLinkedinPoster) CreateComment(_ context.Context, _ string, _ string, _ string) (string, error) {
 	return m.postID, m.err
 }
 

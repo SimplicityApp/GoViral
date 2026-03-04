@@ -14,9 +14,19 @@ class ApiError extends Error {
   }
 }
 
+function getUserID(): string {
+  let uid = localStorage.getItem('goviral_user_id')
+  if (!uid) {
+    uid = crypto.randomUUID()
+    localStorage.setItem('goviral_user_id', uid)
+  }
+  return uid
+}
+
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-User-ID': getUserID(),
   }
   const apiKey = localStorage.getItem('goviral_api_key')
   if (apiKey) {
