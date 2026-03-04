@@ -207,6 +207,7 @@ export function Settings() {
   const [form, setForm] = useState({
     claude_api_key: '',
     gemini_api_key: '',
+    x_username: '',
     x_api_key: '',
     x_api_secret: '',
     x_client_id: '',
@@ -223,6 +224,7 @@ export function Settings() {
       setForm({
         claude_api_key: config.claude.api_key || '',
         gemini_api_key: config.gemini.api_key || '',
+        x_username: config.x.username || '',
         x_api_key: config.x.api_key || '',
         x_api_secret: config.x.api_secret || '',
         x_client_id: config.x.client_id || '',
@@ -254,6 +256,7 @@ export function Settings() {
       claude: { api_key: form.claude_api_key },
       gemini: { api_key: form.gemini_api_key },
       x: {
+        username: form.x_username,
         api_key: form.x_api_key,
         api_secret: form.x_api_secret,
         client_id: form.x_client_id,
@@ -317,6 +320,21 @@ export function Settings() {
           X (Twitter) Credentials
         </h3>
         <div className="flex flex-col gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-[var(--color-text)]">
+              Username
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[var(--color-text-secondary)]">@</span>
+              <input
+                type="text"
+                value={form.x_username}
+                onChange={(e) => setForm((f) => ({ ...f, x_username: e.target.value }))}
+                placeholder="your_handle"
+                className="flex-1 rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)]"
+              />
+            </div>
+          </div>
           <MaskedInput
             label="API Key"
             value={form.x_api_key}

@@ -160,7 +160,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	if cfg.Claude.Model == "" {
-		cfg.Claude.Model = "claude-sonnet-4-20250514"
+		cfg.Claude.Model = "claude-haiku-4-5-20251001"
 	}
 
 	if cfg.Gemini.Model == "" {
