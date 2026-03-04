@@ -185,6 +185,9 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		s.Router.Post("/api/v1/telegram/webhook/"+secret, daemonH.TelegramWebhook)
 	}
 
+	// Public (unauthenticated) endpoints
+	s.Router.Get("/api/v1/extension/download", extensionH.Download)
+
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.Auth(s.Cfg.Server.APIKey))
 
@@ -252,9 +255,6 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		r.Post("/linkedin/extract-cookies", linkedinCookiesH.ExtractCookies)
 		r.Post("/linkedin/login-cookies", linkedinCookiesH.LoginCookies)
 		r.Get("/linkedin/cookies/status", linkedinCookiesH.Status)
-
-		// Extension download
-		r.Get("/extension/download", extensionH.Download)
 
 		// OAuth flow
 		r.Post("/auth/{platform}/start", authH.Start)
