@@ -337,40 +337,49 @@ async def handle_command(client, cmd):
         return {"error": f"unknown action: {action}"}
 
 
+def _init_headless_from_cookies():
+    """Initialize headless Chrome before asyncio starts (sync context only)."""
+    global _headless_setup_error
+    if sys.platform == "darwin":
+        return
+    cookies_path = os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json")
+    try:
+        with open(cookies_path) as f:
+            cdata = json.load(f)
+        li_at = cdata.get("li_at", "")
+        jsessionid = cdata.get("JSESSIONID", "")
+        if li_at and jsessionid:
+            _setup_headless_chrome(li_at, jsessionid)
+        else:
+            _headless_setup_error = "no LinkedIn cookies found in file"
+            print("[goviral] no LinkedIn cookies found, skipping headless Chrome", file=sys.stderr)
+    except FileNotFoundError:
+        _headless_setup_error = "linkitin_cookies.json not found"
+        print("[goviral] no cookies file, skipping headless Chrome", file=sys.stderr)
+    except Exception as e:
+        _headless_setup_error = f"setup failed: {e}"
+        print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
+
+
 async def main():
     cookies_path = os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json")
     client = LinkitinClient(cookies_path=cookies_path)
 
     if sys.platform != "darwin":
         # On Linux: skip REST-based session validation (LinkedIn returns 403).
-        # Just load cookies from file and set up headless Chromium directly.
+        # Just load cookies into the session so linkitin thinks we're logged in.
+        # Headless Chrome was already initialized in _init_headless_from_cookies().
         cookies_loaded = client.session.load_cookies()
-        li_at = None
-        jsessionid = None
-        if cookies_loaded:
-            li_at = getattr(client.session, "_li_at", None)
-            jsessionid = getattr(client.session, "_jsessionid", None)
-        if not li_at or not jsessionid:
-            # Read cookies from the file directly as fallback.
+        if not cookies_loaded:
             try:
                 with open(cookies_path) as f:
                     cdata = json.load(f)
                 li_at = cdata.get("li_at", "")
-                jsessionid = cdata.get("jsessionid", cdata.get("JSESSIONID", ""))
+                jsessionid = cdata.get("JSESSIONID", "")
+                if li_at and jsessionid:
+                    await client.login_with_cookies(li_at, jsessionid)
             except Exception:
                 pass
-        if li_at and jsessionid:
-            # Set cookies on the session so linkitin thinks we're logged in.
-            if not cookies_loaded:
-                await client.login_with_cookies(li_at, jsessionid)
-            try:
-                _setup_headless_chrome(li_at, jsessionid)
-            except Exception as e:
-                _headless_setup_error = f"setup failed: {e}"
-                print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
-        else:
-            _headless_setup_error = "no LinkedIn cookies found"
-            print("[goviral] no LinkedIn cookies found, skipping headless Chrome", file=sys.stderr)
     else:
         # On macOS: use normal login flow (validates via REST or Chrome proxy).
         loaded = False
@@ -405,4 +414,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Initialize headless Chrome BEFORE asyncio.run() — Playwright's sync API
+    # cannot be used inside an asyncio event loop.
+    _init_headless_from_cookies()
     asyncio.run(main())
