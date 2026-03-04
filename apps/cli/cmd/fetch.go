@@ -91,7 +91,7 @@ func fetchFromLinkedIn(ctx context.Context, cfg *config.Config, database *db.DB)
 
 func storePosts(database *db.DB, posts []models.Post, platform string) error {
 	for i := range posts {
-		if err := database.UpsertPost(&posts[i]); err != nil {
+		if err := database.UpsertPost("", &posts[i]); err != nil {
 			return fmt.Errorf("storing %s post: %w", platform, err)
 		}
 	}

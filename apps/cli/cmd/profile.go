@@ -58,7 +58,7 @@ func runProfileBuild(cmd *cobra.Command, args []string) error {
 	}
 	defer database.Close()
 
-	posts, err := database.GetAllPosts()
+	posts, err := database.GetAllPosts("")
 	if err != nil {
 		return fmt.Errorf("fetching posts from database: %w", err)
 	}
@@ -87,7 +87,7 @@ func runProfileBuild(cmd *cobra.Command, args []string) error {
 		Platform: platform,
 		Profile:  *profile,
 	}
-	if err := database.UpsertPersona(p); err != nil {
+	if err := database.UpsertPersona("", p); err != nil {
 		return fmt.Errorf("saving persona: %w", err)
 	}
 
@@ -113,7 +113,7 @@ func runProfileShow(cmd *cobra.Command, args []string) error {
 
 	// Try "all" first, then individual platforms
 	for _, platform := range []string{"all", "x", "linkedin"} {
-		p, err := database.GetPersona(platform)
+		p, err := database.GetPersona("", platform)
 		if err != nil {
 			return fmt.Errorf("fetching persona: %w", err)
 		}

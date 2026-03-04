@@ -43,7 +43,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 
 	// Show single item by ID
 	if historyID > 0 {
-		gc, err := database.GetGeneratedContentByID(historyID)
+		gc, err := database.GetGeneratedContentByID("", historyID)
 		if err != nil {
 			return fmt.Errorf("fetching generated content: %w", err)
 		}
@@ -57,7 +57,7 @@ func runHistory(cmd *cobra.Command, args []string) error {
 	}
 
 	// List items
-	items, err := database.GetGeneratedContent(historyStatus, "", 50)
+	items, err := database.GetGeneratedContent("", historyStatus, "", 50)
 	if err != nil {
 		return fmt.Errorf("fetching history: %w", err)
 	}

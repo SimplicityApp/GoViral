@@ -123,7 +123,7 @@ func runRepoAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("fetching repo from GitHub: %w", err)
 	}
 
-	if err := database.UpsertGitHubRepo(repo); err != nil {
+	if err := database.UpsertGitHubRepo("", repo); err != nil {
 		return fmt.Errorf("saving repo: %w", err)
 	}
 
@@ -151,7 +151,7 @@ func runRepoList(cmd *cobra.Command, args []string) error {
 	}
 	defer database.Close()
 
-	repos, err := database.ListGitHubRepos()
+	repos, err := database.ListGitHubRepos("")
 	if err != nil {
 		return fmt.Errorf("listing repos: %w", err)
 	}
@@ -200,7 +200,7 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 	}
 	defer database.Close()
 
-	repo, err := database.GetGitHubRepoByFullName(fullName)
+	repo, err := database.GetGitHubRepoByFullName("", fullName)
 	if err != nil {
 		return fmt.Errorf("looking up repo: %w", err)
 	}
@@ -208,7 +208,7 @@ func runRepoRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("repo %s not found", fullName)
 	}
 
-	if err := database.DeleteGitHubRepo(repo.ID); err != nil {
+	if err := database.DeleteGitHubRepo("", repo.ID); err != nil {
 		return fmt.Errorf("deleting repo: %w", err)
 	}
 
@@ -241,7 +241,7 @@ func runRepoFetch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--repo flag required or set default_owner/default_repo in config")
 	}
 
-	repo, err := database.GetGitHubRepoByFullName(repoName)
+	repo, err := database.GetGitHubRepoByFullName("", repoName)
 	if err != nil {
 		return fmt.Errorf("looking up repo: %w", err)
 	}
@@ -322,7 +322,7 @@ func runRepoGenerate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--repo flag required or set default_owner/default_repo in config")
 	}
 
-	repo, err := database.GetGitHubRepoByFullName(repoName)
+	repo, err := database.GetGitHubRepoByFullName("", repoName)
 	if err != nil {
 		return fmt.Errorf("looking up repo: %w", err)
 	}
@@ -331,7 +331,7 @@ func runRepoGenerate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get persona for target platform
-	persona, err := database.GetPersona(repoGenPlatform)
+	persona, err := database.GetPersona("", repoGenPlatform)
 	if err != nil {
 		return fmt.Errorf("getting persona: %w", err)
 	}
@@ -437,7 +437,7 @@ func runRepoGenerate(cmd *cobra.Command, args []string) error {
 				CodeImagePath:    codeImagePath,
 			}
 
-			contentID, err := database.InsertGeneratedContent(&gc)
+			contentID, err := database.InsertGeneratedContent("", &gc)
 			if err != nil {
 				fmt.Printf("  Warning: save failed: %v\n", err)
 				continue

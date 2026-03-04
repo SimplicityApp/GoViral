@@ -210,7 +210,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 			if generateRepost {
 				gc.QuoteTweetID = tp.PlatformPostID
 			}
-			if _, err := database.InsertGeneratedContent(gc); err != nil {
+			if _, err := database.InsertGeneratedContent("", gc); err != nil {
 				fmt.Printf("  Warning: failed to save: %v\n", err)
 			}
 		}
@@ -221,7 +221,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 
 func findPersona(database *db.DB) (*models.Persona, error) {
 	for _, platform := range []string{"all", "x", "linkedin"} {
-		p, err := database.GetPersona(platform)
+		p, err := database.GetPersona("", platform)
 		if err != nil {
 			return nil, fmt.Errorf("fetching persona: %w", err)
 		}

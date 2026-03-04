@@ -43,9 +43,9 @@ func runPosts(cmd *cobra.Command, args []string) error {
 
 	var posts []models.Post
 	if postsPlatform == "all" {
-		posts, err = database.GetAllPosts()
+		posts, err = database.GetAllPosts("")
 	} else {
-		posts, err = database.GetPostsByPlatform(postsPlatform)
+		posts, err = database.GetPostsByPlatform("", postsPlatform)
 	}
 	if err != nil {
 		return fmt.Errorf("fetching posts: %w", err)

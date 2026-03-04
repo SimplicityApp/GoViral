@@ -82,7 +82,7 @@ func runPost(cmd *cobra.Command, args []string) error {
 	// Get content to post
 	var gc *models.GeneratedContent
 	if postID > 0 {
-		gc, err = database.GetGeneratedContentByID(postID)
+		gc, err = database.GetGeneratedContentByID("", postID)
 		if err != nil {
 			return fmt.Errorf("fetching content: %w", err)
 		}
@@ -161,7 +161,7 @@ func runPost(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("posting quote tweet: %w", err)
 		}
 
-		if err := database.UpdateGeneratedContentPosted(gc.ID, tweetID); err != nil {
+		if err := database.UpdateGeneratedContentPosted("", gc.ID, tweetID); err != nil {
 			return fmt.Errorf("updating database: %w", err)
 		}
 
@@ -196,7 +196,7 @@ func runPost(cmd *cobra.Command, args []string) error {
 			// Partial failure: save what was posted
 			if len(tweetIDs) > 0 {
 				partialIDs := strings.Join(tweetIDs, ",")
-				_ = database.UpdateGeneratedContentPosted(gc.ID, partialIDs)
+				_ = database.UpdateGeneratedContentPosted("", gc.ID, partialIDs)
 				warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
 				fmt.Println(warnStyle.Render(fmt.Sprintf("Partial thread posted (%d/%d tweets). IDs: %s", len(tweetIDs), len(result.Parts), partialIDs)))
 			}
@@ -208,7 +208,7 @@ func runPost(cmd *cobra.Command, args []string) error {
 
 		// Update DB
 		allIDs := strings.Join(tweetIDs, ",")
-		if err := database.UpdateGeneratedContentPosted(gc.ID, allIDs); err != nil {
+		if err := database.UpdateGeneratedContentPosted("", gc.ID, allIDs); err != nil {
 			return fmt.Errorf("updating database: %w", err)
 		}
 
@@ -223,11 +223,11 @@ func runPost(cmd *cobra.Command, args []string) error {
 
 func interactiveContentSelect(database *db.DB) (*models.GeneratedContent, error) {
 	// Fetch draft and approved content
-	drafts, err := database.GetGeneratedContent("draft", "", 0)
+	drafts, err := database.GetGeneratedContent("", "draft", "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("fetching drafts: %w", err)
 	}
-	approved, err := database.GetGeneratedContent("approved", "", 0)
+	approved, err := database.GetGeneratedContent("", "approved", "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("fetching approved content: %w", err)
 	}
@@ -349,7 +349,7 @@ func schedulePost(database *db.DB, contentID int64, atStr string) error {
 		return fmt.Errorf("scheduled time %s is in the past", atStr)
 	}
 
-	id, err := database.InsertScheduledPost(contentID, scheduledAt)
+	id, err := database.InsertScheduledPost("", contentID, scheduledAt)
 	if err != nil {
 		return fmt.Errorf("scheduling post: %w", err)
 	}
@@ -363,7 +363,7 @@ func schedulePost(database *db.DB, contentID int64, atStr string) error {
 }
 
 func listScheduledPosts(database *db.DB) error {
-	posts, err := database.GetScheduledPosts("pending", 20)
+	posts, err := database.GetScheduledPosts("", "pending", 20)
 	if err != nil {
 		return fmt.Errorf("fetching scheduled posts: %w", err)
 	}
@@ -403,7 +403,7 @@ func runScheduledPosts(cfg *config.Config, database *db.DB) error {
 	posted := 0
 
 	for _, sp := range pending {
-		gc, err := database.GetGeneratedContentByID(sp.GeneratedContentID)
+		gc, err := database.GetGeneratedContentByID("", sp.GeneratedContentID)
 		if err != nil {
 			_ = database.UpdateScheduledPostStatus(sp.ID, "failed", err.Error())
 			continue
@@ -424,7 +424,7 @@ func runScheduledPosts(cfg *config.Config, database *db.DB) error {
 				fmt.Printf("Failed to post scheduled ID %d: %s\n", sp.ID, err.Error())
 				continue
 			}
-			_ = database.UpdateGeneratedContentPosted(gc.ID, tweetID)
+			_ = database.UpdateGeneratedContentPosted("", gc.ID, tweetID)
 			_ = database.UpdateScheduledPostStatus(sp.ID, "posted", "")
 			posted++
 			fmt.Printf("Posted scheduled ID %d (quote tweet) → https://x.com/i/status/%s\n", sp.ID, tweetID)
@@ -446,7 +446,7 @@ func runScheduledPosts(cfg *config.Config, database *db.DB) error {
 				errMsg := err.Error()
 				if len(tweetIDs) > 0 {
 					partialIDs := strings.Join(tweetIDs, ",")
-					_ = database.UpdateGeneratedContentPosted(gc.ID, partialIDs)
+					_ = database.UpdateGeneratedContentPosted("", gc.ID, partialIDs)
 					errMsg = fmt.Sprintf("partial post (%d/%d): %s", len(tweetIDs), len(result.Parts), errMsg)
 				}
 				_ = database.UpdateScheduledPostStatus(sp.ID, "failed", errMsg)
@@ -455,7 +455,7 @@ func runScheduledPosts(cfg *config.Config, database *db.DB) error {
 			}
 
 			allIDs := strings.Join(tweetIDs, ",")
-			_ = database.UpdateGeneratedContentPosted(gc.ID, allIDs)
+			_ = database.UpdateGeneratedContentPosted("", gc.ID, allIDs)
 			_ = database.UpdateScheduledPostStatus(sp.ID, "posted", "")
 			posted++
 			fmt.Printf("Posted scheduled ID %d → https://x.com/i/status/%s\n", sp.ID, tweetIDs[0])

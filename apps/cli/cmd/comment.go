@@ -83,7 +83,7 @@ func runComment(cmd *cobra.Command, args []string) error {
 
 // runCommentByID fetches a stored comment by ID, previews it, and posts it.
 func runCommentByID(cfg *config.Config, database *db.DB, id int64) error {
-	gc, err := database.GetGeneratedContentByID(id)
+	gc, err := database.GetGeneratedContentByID("", id)
 	if err != nil {
 		return fmt.Errorf("fetching content: %w", err)
 	}
@@ -118,7 +118,7 @@ func runCommentByID(cfg *config.Config, database *db.DB, id int64) error {
 		return fmt.Errorf("posting comment: %w", err)
 	}
 
-	if err := database.UpdateGeneratedContentPosted(gc.ID, commentURN); err != nil {
+	if err := database.UpdateGeneratedContentPosted("", gc.ID, commentURN); err != nil {
 		return fmt.Errorf("updating database: %w", err)
 	}
 
@@ -164,12 +164,12 @@ func runCommentDirect(cfg *config.Config, postURN, text string) error {
 // runCommentAI generates comment variations with AI, lets the user pick one, and posts it.
 func runCommentAI(cfg *config.Config, database *db.DB, postURN string) error {
 	// Look up persona
-	persona, err := database.GetPersona("linkedin")
+	persona, err := database.GetPersona("", "linkedin")
 	if err != nil {
 		return fmt.Errorf("fetching persona: %w", err)
 	}
 	if persona == nil {
-		persona, err = database.GetPersona("all")
+		persona, err = database.GetPersona("", "all")
 		if err != nil {
 			return fmt.Errorf("fetching persona: %w", err)
 		}
@@ -232,7 +232,7 @@ func runCommentAI(cfg *config.Config, database *db.DB, postURN string) error {
 		IsComment:        true,
 		QuoteTweetID:     postURN, // reuse field to store the parent post URN
 	}
-	contentID, err := database.InsertGeneratedContent(gc)
+	contentID, err := database.InsertGeneratedContent("", gc)
 	if err != nil {
 		warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 		fmt.Println(warnStyle.Render(fmt.Sprintf("Warning: failed to save to database: %v", err)))
@@ -259,7 +259,7 @@ func runCommentAI(cfg *config.Config, database *db.DB, postURN string) error {
 	}
 
 	if contentID > 0 {
-		if err := database.UpdateGeneratedContentPosted(contentID, commentURN); err != nil {
+		if err := database.UpdateGeneratedContentPosted("", contentID, commentURN); err != nil {
 			warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 			fmt.Println(warnStyle.Render(fmt.Sprintf("Warning: failed to update database: %v", err)))
 		}
