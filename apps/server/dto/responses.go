@@ -107,14 +107,16 @@ type ConfigGeminiResponse struct {
 }
 
 type ConfigXResponse struct {
-	APIKey       string `json:"api_key"`
-	APISecret    string `json:"api_secret"`
-	BearerToken  string `json:"bearer_token"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	Username     string `json:"username"`
-	HasAuth      bool   `json:"has_auth"`
-	HasTwikitAuth bool  `json:"has_twikit_auth"`
+	APIKey        string `json:"api_key"`
+	APISecret     string `json:"api_secret"`
+	BearerToken   string `json:"bearer_token"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	Username      string `json:"username"`
+	HasAuth       bool   `json:"has_auth"`
+	HasTwikitAuth bool   `json:"has_twikit_auth"`
+	AuthToken     string `json:"auth_token,omitempty"`
+	Ct0           string `json:"ct0,omitempty"`
 }
 
 type ConfigLinkedInResponse struct {
@@ -122,6 +124,8 @@ type ConfigLinkedInResponse struct {
 	ClientSecret    string `json:"client_secret"`
 	HasAuth         bool   `json:"has_auth"`
 	HasLinkitinAuth bool   `json:"has_linkitin_auth"`
+	LiAt            string `json:"li_at,omitempty"`
+	JSessionID      string `json:"jsessionid,omitempty"`
 }
 
 type ConfigGitHubResponse struct {
