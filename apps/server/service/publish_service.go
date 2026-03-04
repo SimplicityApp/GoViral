@@ -261,7 +261,7 @@ func (s *PublishService) CommentLinkedIn(ctx context.Context, userID string, con
 	// Look up the thread_urn from the source trending post (needed for ugcPost comments).
 	var threadURN string
 	if gc.SourceTrendingID != 0 {
-		if tp, tpErr := s.db.GetTrendingPostByID(gc.SourceTrendingID); tpErr == nil && tp != nil {
+		if tp, tpErr := s.db.GetTrendingPostByID("",gc.SourceTrendingID); tpErr == nil && tp != nil {
 			threadURN = tp.ThreadURN
 		}
 	}

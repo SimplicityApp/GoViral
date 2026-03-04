@@ -80,7 +80,7 @@ func runTrending(cmd *cobra.Command, args []string) error {
 
 	// Store and display
 	for i := range allTrending {
-		if err := database.UpsertTrendingPost(&allTrending[i]); err != nil {
+		if err := database.UpsertTrendingPost("", &allTrending[i]); err != nil {
 			return fmt.Errorf("storing trending post: %w", err)
 		}
 	}

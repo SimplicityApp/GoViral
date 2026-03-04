@@ -31,6 +31,7 @@ func NewDiscoverTrendingHandler(database *db.DB, cfg *config.Config, store *serv
 
 // Post triggers trending post discovery.
 func (h *DiscoverTrendingHandler) Post(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.DiscoverTrendingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		req = dto.DiscoverTrendingRequest{}
@@ -48,14 +49,14 @@ func (h *DiscoverTrendingHandler) Post(w http.ResponseWriter, r *http.Request) {
 	progress := make(chan dto.ProgressEvent, 10)
 
 	if WantsSSE(r) {
-		go h.doDiscover(r.Context(), req, progress)
+		go h.doDiscover(r.Context(), userID, req, progress)
 		StreamProgress(w, r, progress)
 		return
 	}
 
 	opID := h.store.Create()
 	go func() {
-		h.doDiscover(context.Background(), req, progress)
+		h.doDiscover(context.Background(), userID, req, progress)
 		var lastErr string
 		for evt := range progress {
 			if evt.Type == "error" {
@@ -75,7 +76,7 @@ func (h *DiscoverTrendingHandler) Post(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, req dto.DiscoverTrendingRequest, progress chan<- dto.ProgressEvent) {
+func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string, req dto.DiscoverTrendingRequest, progress chan<- dto.ProgressEvent) {
 	defer close(progress)
 
 	platforms := []string{"x", "linkedin"}
@@ -131,7 +132,7 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, req dto.Discov
 
 		for _, tp := range posts {
 			tp := tp
-			if err := h.db.UpsertTrendingPost(&tp); err != nil {
+			if err := h.db.UpsertTrendingPost(userID, &tp); err != nil {
 				slog.Error("saving trending post", "platform", p, "error", err)
 			}
 		}

@@ -21,6 +21,7 @@ func NewIngestTrendingHandler(database *db.DB) *IngestTrendingHandler {
 }
 
 func (h *IngestTrendingHandler) Post(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.IngestTrendingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "invalid request body", "")
@@ -68,7 +69,7 @@ func (h *IngestTrendingHandler) Post(w http.ResponseWriter, r *http.Request) {
 			NicheTags:      nicheTags,
 			PostedAt:       postedAt,
 		}
-		if err := h.db.UpsertTrendingPost(&post); err != nil {
+		if err := h.db.UpsertTrendingPost(userID, &post); err != nil {
 			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to upsert trending post", "")
 			return
 		}

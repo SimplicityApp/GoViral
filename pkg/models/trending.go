@@ -13,6 +13,7 @@ type MediaAttachment struct {
 // TrendingPost represents a trending post discovered from a platform.
 type TrendingPost struct {
 	ID             int64
+	UserID         string
 	Platform       string
 	PlatformPostID string
 	AuthorUsername string

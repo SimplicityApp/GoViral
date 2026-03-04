@@ -370,7 +370,7 @@ func makeDaemonDiscoverFn(database *db.DB, cfg *config.Config) daemon.DiscoverFu
 		var ids []int64
 		for _, tp := range posts {
 			tp := tp
-			if err := database.UpsertTrendingPost(&tp); err != nil {
+			if err := database.UpsertTrendingPost("", &tp); err != nil {
 				slog.Error("saving trending post", "platform", platform, "error", err)
 				continue
 			}
@@ -433,7 +433,7 @@ func makeDaemonClassifyFn(database *db.DB, cfg *config.Config) daemon.ClassifyFu
 		// Fetch trending posts from DB
 		var posts []models.TrendingPost
 		for _, id := range trendingIDs {
-			tp, err := database.GetTrendingPostByID(id)
+			tp, err := database.GetTrendingPostByID("", id)
 			if err != nil {
 				slog.Error("fetching trending post for classification", "id", id, "error", err)
 				continue

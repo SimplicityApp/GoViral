@@ -65,7 +65,7 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 	var allContent []models.GeneratedContent
 
 	for i, tpID := range req.TrendingPostIDs {
-		tp, err := s.db.GetTrendingPostByID(tpID)
+		tp, err := s.db.GetTrendingPostByID("",tpID)
 		if err != nil {
 			return nil, fmt.Errorf("getting trending post %d: %w", tpID, err)
 		}
@@ -180,7 +180,7 @@ func (s *GenerateService) GenerateComment(ctx context.Context, userID string, tr
 	client := claude.NewClient(s.cfg.Claude.APIKey, s.cfg.Claude.Model)
 	gen := generator.NewGenerator(client)
 
-	tp, err := s.db.GetTrendingPostByID(trendingPostID)
+	tp, err := s.db.GetTrendingPostByID("",trendingPostID)
 	if err != nil {
 		return nil, fmt.Errorf("getting trending post %d: %w", trendingPostID, err)
 	}

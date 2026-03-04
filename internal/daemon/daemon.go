@@ -391,7 +391,7 @@ func (d *Daemon) runDigest(ctx context.Context, platform string) {
 
 	// 1. Get unbatched trending IDs (accumulated pool from last 24h)
 	lookback := 24 * time.Hour
-	trendingIDs, err := d.db.GetUnbatchedTrendingIDs(platform, lookback)
+	trendingIDs, err := d.db.GetUnbatchedTrendingIDs("", platform, lookback)
 	if err != nil {
 		slog.Error("daemon digest: getting unbatched trending IDs", "platform", platform, "error", err)
 		return
@@ -470,7 +470,7 @@ func (d *Daemon) runDigest(ctx context.Context, platform string) {
 			}
 			var tp models.TrendingPost
 			if content.SourceTrendingID != 0 {
-				post, err := d.db.GetTrendingPostByID(content.SourceTrendingID)
+				post, err := d.db.GetTrendingPostByID("",content.SourceTrendingID)
 				if err == nil && post != nil {
 					tp = *post
 				}
@@ -614,7 +614,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 	var posts []models.TrendingPost
 	idToPost := make(map[int64]models.TrendingPost)
 	for _, id := range trendingIDs {
-		tp, err := d.db.GetTrendingPostByID(id)
+		tp, err := d.db.GetTrendingPostByID("",id)
 		if err != nil || tp == nil {
 			slog.Warn("auto-publish: skipping trending post", "id", id, "error", err)
 			continue
@@ -704,7 +704,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 			if content.SourceTrendingID != 0 {
 				if p, ok := idToPost[content.SourceTrendingID]; ok {
 					tp = p
-				} else if post, err := d.db.GetTrendingPostByID(content.SourceTrendingID); err == nil && post != nil {
+				} else if post, err := d.db.GetTrendingPostByID("",content.SourceTrendingID); err == nil && post != nil {
 					tp = *post
 				}
 			}
@@ -906,7 +906,7 @@ func (d *Daemon) runStandardDigest(ctx context.Context, platform string, trendin
 			}
 			var tp models.TrendingPost
 			if content.SourceTrendingID != 0 {
-				post, err := d.db.GetTrendingPostByID(content.SourceTrendingID)
+				post, err := d.db.GetTrendingPostByID("",content.SourceTrendingID)
 				if err == nil && post != nil {
 					tp = *post
 				}
@@ -1025,7 +1025,7 @@ func (d *Daemon) runPipeline(ctx context.Context, platform string) {
 	// 1b. Filter out posts the user already acted on
 	if d.cfg.Daemon.DedupActionedPosts {
 		lookback := time.Duration(d.cfg.Daemon.DedupLookbackHours) * time.Hour
-		actioned, err := d.db.GetActionedTrendingIDs(platform, lookback)
+		actioned, err := d.db.GetActionedTrendingIDs("", platform, lookback)
 		if err != nil {
 			slog.Error("daemon dedup lookup failed, proceeding unfiltered", "platform", platform, "error", err)
 		} else if len(actioned) > 0 {
@@ -1549,7 +1549,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		// Fetch source trending post
 		var tp models.TrendingPost
 		if content.SourceTrendingID != 0 {
-			post, err := d.db.GetTrendingPostByID(content.SourceTrendingID)
+			post, err := d.db.GetTrendingPostByID("",content.SourceTrendingID)
 			if err != nil {
 				return fmt.Errorf("fetching trending post for rewrite: %w", err)
 			}
@@ -1664,7 +1664,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		// Fetch source trending post (may be nil)
 		var tp *models.TrendingPost
 		if content.SourceTrendingID != 0 {
-			tp, err = d.db.GetTrendingPostByID(content.SourceTrendingID)
+			tp, err = d.db.GetTrendingPostByID("",content.SourceTrendingID)
 			if err != nil {
 				slog.Warn("fetching trending post for read", "error", err)
 			}
@@ -1730,7 +1730,7 @@ func (d *Daemon) fetchTrendingPostsForContents(contents []models.GeneratedConten
 		if _, ok := result[c.SourceTrendingID]; ok {
 			continue
 		}
-		tp, err := d.db.GetTrendingPostByID(c.SourceTrendingID)
+		tp, err := d.db.GetTrendingPostByID("",c.SourceTrendingID)
 		if err != nil {
 			slog.Warn("fetching trending post for notification", "trending_id", c.SourceTrendingID, "error", err)
 			continue

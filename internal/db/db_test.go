@@ -273,11 +273,11 @@ func TestUpsertTrendingPost_InsertAndUpdate(t *testing.T) {
 	}
 
 	// Insert
-	if err := db.UpsertTrendingPost(tp); err != nil {
+	if err := db.UpsertTrendingPost("", tp); err != nil {
 		t.Fatalf("UpsertTrendingPost() insert error = %v", err)
 	}
 
-	posts, err := db.GetTrendingPosts("", 0)
+	posts, err := db.GetTrendingPosts("","", 0)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts() error = %v", err)
 	}
@@ -297,11 +297,11 @@ func TestUpsertTrendingPost_InsertAndUpdate(t *testing.T) {
 	// Update
 	tp.Likes = 10000
 	tp.NicheTags = []string{"tech", "AI", "startups"}
-	if err := db.UpsertTrendingPost(tp); err != nil {
+	if err := db.UpsertTrendingPost("", tp); err != nil {
 		t.Fatalf("UpsertTrendingPost() update error = %v", err)
 	}
 
-	posts, err = db.GetTrendingPosts("", 0)
+	posts, err = db.GetTrendingPosts("","", 0)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts() after update error = %v", err)
 	}
@@ -325,12 +325,12 @@ func TestGetTrendingPosts_PlatformFilter(t *testing.T) {
 		{Platform: "x", PlatformPostID: "tp-x-002", Content: "X trending 2", Likes: 300, NicheTags: []string{"AI"}, PostedAt: time.Now()},
 	}
 	for _, tp := range tps {
-		if err := db.UpsertTrendingPost(tp); err != nil {
+		if err := db.UpsertTrendingPost("", tp); err != nil {
 			t.Fatalf("UpsertTrendingPost() error = %v", err)
 		}
 	}
 
-	xPosts, err := db.GetTrendingPosts("x", 0)
+	xPosts, err := db.GetTrendingPosts("","x", 0)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts('x') error = %v", err)
 	}
@@ -343,7 +343,7 @@ func TestGetTrendingPosts_PlatformFilter(t *testing.T) {
 		}
 	}
 
-	liPosts, err := db.GetTrendingPosts("linkedin", 0)
+	liPosts, err := db.GetTrendingPosts("","linkedin", 0)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts('linkedin') error = %v", err)
 	}
@@ -361,12 +361,12 @@ func TestGetTrendingPosts_OrderedByLikes(t *testing.T) {
 		{Platform: "x", PlatformPostID: "tp-003", Content: "Mid", Likes: 200, NicheTags: []string{}, PostedAt: time.Now()},
 	}
 	for _, tp := range tps {
-		if err := db.UpsertTrendingPost(tp); err != nil {
+		if err := db.UpsertTrendingPost("", tp); err != nil {
 			t.Fatalf("UpsertTrendingPost() error = %v", err)
 		}
 	}
 
-	posts, err := db.GetTrendingPosts("", 0)
+	posts, err := db.GetTrendingPosts("","", 0)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts() error = %v", err)
 	}
@@ -397,12 +397,12 @@ func TestGetTrendingPosts_WithLimit(t *testing.T) {
 			NicheTags:      []string{"tech"},
 			PostedAt:       time.Now(),
 		}
-		if err := db.UpsertTrendingPost(tp); err != nil {
+		if err := db.UpsertTrendingPost("", tp); err != nil {
 			t.Fatalf("UpsertTrendingPost() error = %v", err)
 		}
 	}
 
-	posts, err := db.GetTrendingPosts("", 3)
+	posts, err := db.GetTrendingPosts("","", 3)
 	if err != nil {
 		t.Fatalf("GetTrendingPosts() error = %v", err)
 	}
@@ -424,12 +424,12 @@ func TestGetTrendingPostByID(t *testing.T) {
 		NicheTags:      []string{"tech"},
 		PostedAt:       time.Now(),
 	}
-	if err := db.UpsertTrendingPost(tp); err != nil {
+	if err := db.UpsertTrendingPost("", tp); err != nil {
 		t.Fatalf("UpsertTrendingPost() error = %v", err)
 	}
 
 	// Fetch by ID (auto-increment starts at 1)
-	got, err := db.GetTrendingPostByID(1)
+	got, err := db.GetTrendingPostByID("",1)
 	if err != nil {
 		t.Fatalf("GetTrendingPostByID(1) error = %v", err)
 	}
@@ -450,7 +450,7 @@ func TestGetTrendingPostByID(t *testing.T) {
 func TestGetTrendingPostByID_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	got, err := db.GetTrendingPostByID(999)
+	got, err := db.GetTrendingPostByID("",999)
 	if err != nil {
 		t.Fatalf("GetTrendingPostByID(999) error = %v", err)
 	}
@@ -693,7 +693,7 @@ func TestGetActionedTrendingIDs(t *testing.T) {
 	}
 
 	// Query with 24h lookback
-	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	ids, err := db.GetActionedTrendingIDs("","x", 24*time.Hour)
 	if err != nil {
 		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
 	}
@@ -718,7 +718,7 @@ func TestGetActionedTrendingIDs(t *testing.T) {
 func TestGetActionedTrendingIDs_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
-	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	ids, err := db.GetActionedTrendingIDs("","x", 24*time.Hour)
 	if err != nil {
 		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
 	}
@@ -739,7 +739,7 @@ func TestGetActionedTrendingIDs_ScheduledIncluded(t *testing.T) {
 		t.Fatalf("insert scheduled batch: %v", err)
 	}
 
-	ids, err := db.GetActionedTrendingIDs("x", 24*time.Hour)
+	ids, err := db.GetActionedTrendingIDs("","x", 24*time.Hour)
 	if err != nil {
 		t.Fatalf("GetActionedTrendingIDs() error = %v", err)
 	}

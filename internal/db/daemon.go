@@ -224,7 +224,8 @@ func (db *DB) SetGeneratedContentBatchID(contentID, batchID int64) error {
 // GetActionedTrendingIDs returns the set of trending post IDs that were explicitly acted on
 // (posted, scheduled, or rejected) for the given platform within the lookback window.
 // Archived/auto-skipped batches are intentionally excluded so their IDs can be retried.
-func (db *DB) GetActionedTrendingIDs(platform string, since time.Duration) (map[int64]bool, error) {
+// If userID is non-empty, results are scoped to that user's trending posts.
+func (db *DB) GetActionedTrendingIDs(userID string, platform string, since time.Duration) (map[int64]bool, error) {
 	cutoff := time.Now().Add(-since)
 	rows, err := db.conn.Query(
 		`SELECT DISTINCT j.value
@@ -252,19 +253,23 @@ func (db *DB) GetActionedTrendingIDs(platform string, since time.Duration) (map[
 
 // GetUnbatchedTrendingIDs returns the IDs of trending posts for the given platform that were
 // discovered within the lookback window but have never been included in any daemon batch.
-func (db *DB) GetUnbatchedTrendingIDs(platform string, since time.Duration) ([]int64, error) {
+// If userID is non-empty, results are scoped to that user's trending posts.
+func (db *DB) GetUnbatchedTrendingIDs(userID string, platform string, since time.Duration) ([]int64, error) {
 	cutoff := time.Now().Add(-since)
-	rows, err := db.conn.Query(
-		`SELECT id FROM trending_posts
+	query := `SELECT id FROM trending_posts
 		 WHERE platform = ? AND fetched_at > ?
 		   AND id NOT IN (
 		       SELECT DISTINCT CAST(j.value AS INTEGER)
 		       FROM daemon_batches, json_each(daemon_batches.trending_ids) AS j
 		       WHERE daemon_batches.platform = ?
-		   )
-		 ORDER BY fetched_at DESC`,
-		platform, cutoff, platform,
-	)
+		   )`
+	args := []interface{}{platform, cutoff, platform}
+	if userID != "" {
+		query += " AND user_id = ?"
+		args = append(args, userID)
+	}
+	query += " ORDER BY fetched_at DESC"
+	rows, err := db.conn.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying unbatched trending IDs: %w", err)
 	}

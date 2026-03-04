@@ -277,7 +277,7 @@ func runCommentAI(cfg *config.Config, database *db.DB, postURN string) error {
 // resolveTrendingPost finds a trending post by its platform_post_id (URN) in the DB.
 // If not found, it returns a minimal TrendingPost constructed from the URN so generation still works.
 func resolveTrendingPost(database *db.DB, postURN string) models.TrendingPost {
-	posts, err := database.GetTrendingPosts("linkedin", 0)
+	posts, err := database.GetTrendingPosts("", "linkedin", 0)
 	if err == nil {
 		for _, p := range posts {
 			if p.PlatformPostID == postURN {

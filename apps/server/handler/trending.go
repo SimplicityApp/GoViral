@@ -24,10 +24,11 @@ func NewTrendingHandler(svc *service.TrendingService) *TrendingHandler {
 
 // List returns trending posts filtered by query parameters.
 func (h *TrendingHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	platform := r.URL.Query().Get("platform")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	posts, err := h.svc.List(platform, limit)
+	posts, err := h.svc.List(userID, platform, limit)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list trending posts", reqID)
@@ -44,6 +45,7 @@ func (h *TrendingHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID returns a single trending post.
 func (h *TrendingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -52,7 +54,7 @@ func (h *TrendingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post, err := h.svc.GetByID(id)
+	post, err := h.svc.GetByID(userID, id)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to get trending post", reqID)

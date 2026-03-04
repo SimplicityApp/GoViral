@@ -232,6 +232,7 @@ func (db *DB) migrate() error {
 	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
 	db.conn.Exec("ALTER TABLE scheduled_posts ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
 	db.conn.Exec("ALTER TABLE github_repos ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+	db.conn.Exec("ALTER TABLE trending_posts ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
 
 	// --- Migration: drop column-level UNIQUE from my_posts and github_repos ---
 	// SQLite column-level UNIQUE creates sqlite_autoindex_<table>_N entries.
@@ -269,11 +270,37 @@ func (db *DB) migrate() error {
 		return fmt.Errorf("migrating github_repos unique constraint: %w", err)
 	}
 
+	if err := db.dropColumnUnique("trending_posts", `CREATE TABLE trending_posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		platform TEXT NOT NULL,
+		platform_post_id TEXT NOT NULL,
+		author_username TEXT,
+		author_name TEXT,
+		content TEXT NOT NULL,
+		likes INTEGER DEFAULT 0,
+		reposts INTEGER DEFAULT 0,
+		comments INTEGER DEFAULT 0,
+		impressions INTEGER DEFAULT 0,
+		niche_tags TEXT,
+		posted_at DATETIME,
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		media_json TEXT DEFAULT '[]',
+		thread_urn TEXT DEFAULT '',
+		video_url TEXT DEFAULT '',
+		view_count INTEGER DEFAULT 0,
+		duration INTEGER DEFAULT 0,
+		is_video INTEGER DEFAULT 0,
+		user_id TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("migrating trending_posts unique constraint: %w", err)
+	}
+
 	// Composite unique indexes for user-scoped data
 	// NOTE: These must run AFTER dropColumnUnique table rebuilds, which destroy all indexes.
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_my_posts_user_platform_post ON my_posts(user_id, platform_post_id)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_user_platform ON persona(user_id, platform)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_github_repos_user_fullname ON github_repos(user_id, full_name)")
+	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_trending_posts_user_platform_post ON trending_posts(user_id, platform_post_id)")
 
 	return nil
 }
@@ -285,7 +312,6 @@ func (db *DB) dropColumnUnique(tableName, createSQL string) error {
 	if err != nil {
 		return fmt.Errorf("querying index list for %s: %w", tableName, err)
 	}
-	defer rows.Close()
 
 	hasAutoIndex := false
 	for rows.Next() {
@@ -293,6 +319,7 @@ func (db *DB) dropColumnUnique(tableName, createSQL string) error {
 		var name, origin string
 		var unique, partial int
 		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			rows.Close()
 			return fmt.Errorf("scanning index row for %s: %w", tableName, err)
 		}
 		if strings.HasPrefix(name, "sqlite_autoindex_"+tableName+"_") {
@@ -301,14 +328,23 @@ func (db *DB) dropColumnUnique(tableName, createSQL string) error {
 		}
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return fmt.Errorf("iterating indexes for %s: %w", tableName, err)
 	}
+	// Close rows before starting the transaction — with :memory: SQLite, an open
+	// rows cursor holds a connection, and Begin() would open a second (empty) DB.
+	rows.Close()
 
 	if !hasAutoIndex {
 		return nil
 	}
 
-	// Rebuild the table inside a transaction to remove column-level UNIQUE
+	// Rebuild the table inside a transaction to remove column-level UNIQUE.
+	// Enable legacy_alter_table to avoid FK reference checks during rename
+	// (e.g. generated_content REFERENCES trending_posts(id) would block rename).
+	db.conn.Exec("PRAGMA legacy_alter_table = ON")
+	defer db.conn.Exec("PRAGMA legacy_alter_table = OFF")
+
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return fmt.Errorf("beginning transaction for %s rebuild: %w", tableName, err)
@@ -460,8 +496,8 @@ func (db *DB) GetPersona(userID string, platform string) (*models.Persona, error
 
 // --- trending_posts CRUD ---
 
-// UpsertTrendingPost inserts or updates a trending post.
-func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
+// UpsertTrendingPost inserts or updates a trending post scoped to a user.
+func (db *DB) UpsertTrendingPost(userID string, tp *models.TrendingPost) error {
 	nicheTags, err := json.Marshal(tp.NicheTags)
 	if err != nil {
 		return fmt.Errorf("marshaling niche tags: %w", err)
@@ -477,14 +513,14 @@ func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
 		isVideo = 1
 	}
 	query := `
-	INSERT INTO trending_posts (platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, media_json, posted_at, fetched_at, thread_urn, video_url, view_count, duration, is_video)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(platform_post_id) DO UPDATE SET
+	INSERT INTO trending_posts (user_id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, media_json, posted_at, fetched_at, thread_urn, video_url, view_count, duration, is_video)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(user_id, platform_post_id) DO UPDATE SET
 		content=excluded.content, likes=excluded.likes, reposts=excluded.reposts,
 		comments=excluded.comments, impressions=excluded.impressions, niche_tags=excluded.niche_tags, media_json=excluded.media_json, fetched_at=excluded.fetched_at, thread_urn=excluded.thread_urn, video_url=excluded.video_url, view_count=excluded.view_count, duration=excluded.duration, is_video=excluded.is_video
 	RETURNING id
 	`
-	row := db.conn.QueryRow(query, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now(), tp.ThreadURN, tp.VideoURL, tp.ViewCount, tp.Duration, isVideo)
+	row := db.conn.QueryRow(query, userID, tp.Platform, tp.PlatformPostID, tp.AuthorUsername, tp.AuthorName, tp.Content, tp.Likes, tp.Reposts, tp.Comments, tp.Impressions, string(nicheTags), string(mediaJSON), tp.PostedAt, time.Now(), tp.ThreadURN, tp.VideoURL, tp.ViewCount, tp.Duration, isVideo)
 	if err := row.Scan(&tp.ID); err != nil {
 		return fmt.Errorf("upserting trending post: %w", err)
 	}
@@ -495,12 +531,12 @@ func (db *DB) UpsertTrendingPost(tp *models.TrendingPost) error {
 // with optional platform and limit filters. Only posts fetched within 5 minutes
 // of the latest fetched_at are returned, so stale results from previous runs
 // are excluded.
-func (db *DB) GetTrendingPosts(platform string, limit int) ([]models.TrendingPost, error) {
-	query := "SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts"
-	var args []interface{}
+func (db *DB) GetTrendingPosts(userID string, platform string, limit int) ([]models.TrendingPost, error) {
+	query := "SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts WHERE user_id = ?"
+	args := []interface{}{userID}
 
 	if platform != "" {
-		query += " WHERE platform = ?"
+		query += " AND platform = ?"
 		args = append(args, platform)
 	}
 	query += " ORDER BY likes DESC"
@@ -559,14 +595,18 @@ func (db *DB) GetTrendingPosts(platform string, limit int) ([]models.TrendingPos
 	return allPosts, nil
 }
 
-// GetTrendingPostByID returns a single trending post by ID.
-func (db *DB) GetTrendingPostByID(id int64) (*models.TrendingPost, error) {
+// GetTrendingPostByID returns a single trending post by ID, scoped to a user.
+// If userID is empty, the post is fetched without user scoping (for daemon/CLI use).
+func (db *DB) GetTrendingPostByID(userID string, id int64) (*models.TrendingPost, error) {
 	var tp models.TrendingPost
 	var nicheTagsJSON, mediaJSON string
-	err := db.conn.QueryRow(
-		"SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts WHERE id = ?",
-		id,
-	).Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt, &tp.ThreadURN, &tp.VideoURL, &tp.ViewCount, &tp.Duration, &tp.IsVideo)
+	query := "SELECT id, platform, platform_post_id, author_username, author_name, content, likes, reposts, comments, impressions, niche_tags, COALESCE(media_json, '[]'), posted_at, fetched_at, COALESCE(thread_urn, ''), COALESCE(video_url, ''), COALESCE(view_count, 0), COALESCE(duration, 0), COALESCE(is_video, 0) FROM trending_posts WHERE id = ?"
+	args := []interface{}{id}
+	if userID != "" {
+		query += " AND user_id = ?"
+		args = append(args, userID)
+	}
+	err := db.conn.QueryRow(query, args...).Scan(&tp.ID, &tp.Platform, &tp.PlatformPostID, &tp.AuthorUsername, &tp.AuthorName, &tp.Content, &tp.Likes, &tp.Reposts, &tp.Comments, &tp.Impressions, &nicheTagsJSON, &mediaJSON, &tp.PostedAt, &tp.FetchedAt, &tp.ThreadURN, &tp.VideoURL, &tp.ViewCount, &tp.Duration, &tp.IsVideo)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

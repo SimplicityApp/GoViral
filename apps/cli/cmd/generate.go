@@ -63,7 +63,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get trending posts
-	trending, err := database.GetTrendingPosts(generatePlatform, 20)
+	trending, err := database.GetTrendingPosts("", generatePlatform, 20)
 	if err != nil {
 		return fmt.Errorf("fetching trending posts: %w", err)
 	}
