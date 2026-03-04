@@ -29,8 +29,8 @@ func NewPublishService(database *db.DB, cfg *config.Config) *PublishService {
 
 // Publish posts content to the target platform and returns the post IDs and thread parts.
 // It dispatches to PublishX or PublishLinkedIn based on the content's target platform.
-func (s *PublishService) Publish(ctx context.Context, contentID int64, numbered bool) ([]string, []string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) Publish(ctx context.Context, userID string, contentID int64, numbered bool) ([]string, []string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -40,7 +40,7 @@ func (s *PublishService) Publish(ctx context.Context, contentID int64, numbered 
 
 	// Route comments to platform-specific handler
 	if gc.IsComment {
-		commentID, err := s.Comment(ctx, contentID)
+		commentID, err := s.Comment(ctx, userID, contentID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -49,21 +49,21 @@ func (s *PublishService) Publish(ctx context.Context, contentID int64, numbered 
 
 	switch gc.TargetPlatform {
 	case "x":
-		return s.PublishX(ctx, contentID, numbered)
+		return s.PublishX(ctx, userID, contentID, numbered)
 	case "linkedin":
-		return s.PublishLinkedIn(ctx, contentID)
+		return s.PublishLinkedIn(ctx, userID, contentID)
 	case "youtube":
-		return s.PublishYouTube(ctx, contentID)
+		return s.PublishYouTube(ctx, userID, contentID)
 	case "tiktok":
-		return s.PublishTikTok(ctx, contentID)
+		return s.PublishTikTok(ctx, userID, contentID)
 	default:
 		return nil, nil, fmt.Errorf("unsupported platform: %s", gc.TargetPlatform)
 	}
 }
 
 // PublishX posts X content (threading + quote tweets).
-func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered bool) ([]string, []string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) PublishX(ctx context.Context, userID string, contentID int64, numbered bool) ([]string, []string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -79,7 +79,7 @@ func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered
 
 	// Comment path
 	if gc.IsComment {
-		commentID, err := s.CommentX(ctx, contentID)
+		commentID, err := s.CommentX(ctx, userID, contentID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -95,7 +95,7 @@ func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered
 			log.Printf("quote tweet publish failed for content %d: %v", contentID, err)
 			return nil, nil, fmt.Errorf("posting quote tweet to X: %w", err)
 		}
-		if err := s.db.UpdateGeneratedContentPosted(contentID, postID); err != nil {
+		if err := s.db.UpdateGeneratedContentPosted(userID, contentID, postID); err != nil {
 			return nil, nil, fmt.Errorf("updating content status: %w", err)
 		}
 		return []string{postID}, []string{gc.GeneratedContent}, nil
@@ -132,7 +132,7 @@ func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered
 							}
 							postIDs = append(postIDs, remainingIDs...)
 						}
-						if err := s.db.UpdateGeneratedContentPosted(contentID, strings.Join(postIDs, ",")); err != nil {
+						if err := s.db.UpdateGeneratedContentPosted(userID, contentID, strings.Join(postIDs, ",")); err != nil {
 							return nil, nil, fmt.Errorf("updating content status: %w", err)
 						}
 						return postIDs, parts, nil
@@ -147,7 +147,7 @@ func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered
 		return nil, nil, fmt.Errorf("posting to X: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, strings.Join(postIDs, ",")); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, strings.Join(postIDs, ",")); err != nil {
 		return nil, nil, fmt.Errorf("updating content status: %w", err)
 	}
 
@@ -155,8 +155,8 @@ func (s *PublishService) PublishX(ctx context.Context, contentID int64, numbered
 }
 
 // PublishLinkedIn posts or reposts LinkedIn content via linkitin.
-func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) ([]string, []string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, contentID int64) ([]string, []string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -172,7 +172,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) (
 
 	// Comment path
 	if gc.IsComment {
-		commentID, err := s.CommentLinkedIn(ctx, contentID)
+		commentID, err := s.CommentLinkedIn(ctx, userID, contentID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -188,7 +188,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) (
 			log.Printf("LinkedIn repost failed for content %d: %v", contentID, err)
 			return nil, nil, fmt.Errorf("reposting to LinkedIn: %w", err)
 		}
-		if err := s.db.UpdateGeneratedContentPosted(contentID, postID); err != nil {
+		if err := s.db.UpdateGeneratedContentPosted(userID, contentID, postID); err != nil {
 			return nil, nil, fmt.Errorf("updating content status: %w", err)
 		}
 		return []string{postID}, []string{gc.GeneratedContent}, nil
@@ -207,7 +207,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) (
 			if err != nil {
 				log.Printf("failed to post LinkedIn content with image for content %d: %v; falling back to plain post", contentID, err)
 			} else {
-				if err := s.db.UpdateGeneratedContentPosted(contentID, postID); err != nil {
+				if err := s.db.UpdateGeneratedContentPosted(userID, contentID, postID); err != nil {
 					return nil, nil, fmt.Errorf("updating content status: %w", err)
 				}
 				return []string{postID}, []string{gc.GeneratedContent}, nil
@@ -220,7 +220,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) (
 		return nil, nil, fmt.Errorf("posting to LinkedIn: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, postID); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, postID); err != nil {
 		return nil, nil, fmt.Errorf("updating content status: %w", err)
 	}
 
@@ -228,8 +228,8 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, contentID int64) (
 }
 
 // CommentLinkedIn posts a comment on a LinkedIn post via linkitin.
-func (s *PublishService) CommentLinkedIn(ctx context.Context, contentID int64) (string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) CommentLinkedIn(ctx context.Context, userID string, contentID int64) (string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return "", fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -273,7 +273,7 @@ func (s *PublishService) CommentLinkedIn(ctx context.Context, contentID int64) (
 		return "", fmt.Errorf("commenting on LinkedIn post: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, commentURN); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, commentURN); err != nil {
 		return "", fmt.Errorf("updating content status: %w", err)
 	}
 
@@ -281,8 +281,8 @@ func (s *PublishService) CommentLinkedIn(ctx context.Context, contentID int64) (
 }
 
 // CommentX posts a reply to an X (Twitter) tweet via twikit.
-func (s *PublishService) CommentX(ctx context.Context, contentID int64) (string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) CommentX(ctx context.Context, userID string, contentID int64) (string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return "", fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -306,7 +306,7 @@ func (s *PublishService) CommentX(ctx context.Context, contentID int64) (string,
 		return "", fmt.Errorf("replying to X tweet: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, replyID); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, replyID); err != nil {
 		return "", fmt.Errorf("updating content status: %w", err)
 	}
 
@@ -314,8 +314,8 @@ func (s *PublishService) CommentX(ctx context.Context, contentID int64) (string,
 }
 
 // Comment dispatches to the platform-specific comment handler based on content's target platform.
-func (s *PublishService) Comment(ctx context.Context, contentID int64) (string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) Comment(ctx context.Context, userID string, contentID int64) (string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return "", fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -325,9 +325,9 @@ func (s *PublishService) Comment(ctx context.Context, contentID int64) (string, 
 
 	switch gc.TargetPlatform {
 	case "x":
-		return s.CommentX(ctx, contentID)
+		return s.CommentX(ctx, userID, contentID)
 	case "linkedin":
-		return s.CommentLinkedIn(ctx, contentID)
+		return s.CommentLinkedIn(ctx, userID, contentID)
 	default:
 		return "", fmt.Errorf("unsupported platform for comment: %s", gc.TargetPlatform)
 	}
@@ -335,8 +335,8 @@ func (s *PublishService) Comment(ctx context.Context, contentID int64) (string, 
 
 // Schedule submits content to the platform's native scheduling for the given time.
 // Returns the platform-specific schedule ID if available, otherwise an empty string for fallback scheduling.
-func (s *PublishService) Schedule(ctx context.Context, contentID int64, scheduledAt time.Time) (string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) Schedule(ctx context.Context, userID string, contentID int64, scheduledAt time.Time) (string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return "", fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -379,8 +379,8 @@ func (s *PublishService) Schedule(ctx context.Context, contentID int64, schedule
 }
 
 // PublishYouTube uploads video content to YouTube Shorts.
-func (s *PublishService) PublishYouTube(ctx context.Context, contentID int64) ([]string, []string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) PublishYouTube(ctx context.Context, userID string, contentID int64) ([]string, []string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -423,7 +423,7 @@ func (s *PublishService) PublishYouTube(ctx context.Context, contentID int64) ([
 		return nil, nil, fmt.Errorf("uploading to YouTube: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, videoID); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, videoID); err != nil {
 		return nil, nil, fmt.Errorf("updating content status: %w", err)
 	}
 
@@ -431,8 +431,8 @@ func (s *PublishService) PublishYouTube(ctx context.Context, contentID int64) ([
 }
 
 // PublishTikTok uploads video content to TikTok.
-func (s *PublishService) PublishTikTok(ctx context.Context, contentID int64) ([]string, []string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *PublishService) PublishTikTok(ctx context.Context, userID string, contentID int64) ([]string, []string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting content %d: %w", contentID, err)
 	}
@@ -460,7 +460,7 @@ func (s *PublishService) PublishTikTok(ctx context.Context, contentID int64) ([]
 		return nil, nil, fmt.Errorf("uploading to TikTok: %w", err)
 	}
 
-	if err := s.db.UpdateGeneratedContentPosted(contentID, videoID); err != nil {
+	if err := s.db.UpdateGeneratedContentPosted(userID, contentID, videoID); err != nil {
 		return nil, nil, fmt.Errorf("updating content status: %w", err)
 	}
 

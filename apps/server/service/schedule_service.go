@@ -18,8 +18,8 @@ func NewScheduleService(database *db.DB) *ScheduleService {
 }
 
 // List returns scheduled posts with optional status filter and limit.
-func (s *ScheduleService) List(status string, limit int) ([]models.ScheduledPost, error) {
-	posts, err := s.db.GetScheduledPosts(status, limit)
+func (s *ScheduleService) List(userID string, status string, limit int) ([]models.ScheduledPost, error) {
+	posts, err := s.db.GetScheduledPosts(userID, status, limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing scheduled posts: %w", err)
 	}

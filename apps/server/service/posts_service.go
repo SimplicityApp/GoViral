@@ -19,14 +19,14 @@ func NewPostsService(database *db.DB) *PostsService {
 
 // List returns posts filtered by platform. If platform is empty, returns all.
 // Limit of 0 means no limit.
-func (s *PostsService) List(platform string, limit int) ([]models.Post, error) {
+func (s *PostsService) List(userID string, platform string, limit int) ([]models.Post, error) {
 	var posts []models.Post
 	var err error
 
 	if platform != "" {
-		posts, err = s.db.GetPostsByPlatform(platform)
+		posts, err = s.db.GetPostsByPlatform(userID, platform)
 	} else {
-		posts, err = s.db.GetAllPosts()
+		posts, err = s.db.GetAllPosts(userID)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("listing posts: %w", err)

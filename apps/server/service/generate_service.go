@@ -25,7 +25,7 @@ func NewGenerateService(database *db.DB, cfg *config.Config) *GenerateService {
 }
 
 // Generate creates content variations for the given trending posts.
-func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest, progress chan<- dto.ProgressEvent) ([]models.GeneratedContent, error) {
+func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.GenerateRequest, progress chan<- dto.ProgressEvent) ([]models.GeneratedContent, error) {
 	defer close(progress)
 
 	if s.cfg.Claude.APIKey == "" {
@@ -53,7 +53,7 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 	}
 
 	// Get persona for target platform
-	persona, err := s.db.GetPersona(targetPlatform)
+	persona, err := s.db.GetPersona(userID, targetPlatform)
 	if err != nil {
 		return nil, fmt.Errorf("getting persona: %w", err)
 	}
@@ -146,7 +146,7 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 			}
 			gc.ImagePrompt = imagePrompt
 
-			id, err := s.db.InsertGeneratedContent(&gc)
+			id, err := s.db.InsertGeneratedContent(userID, &gc)
 			if err != nil {
 				return nil, fmt.Errorf("saving generated content: %w", err)
 			}
@@ -165,7 +165,7 @@ func (s *GenerateService) Generate(ctx context.Context, req dto.GenerateRequest,
 }
 
 // GenerateComment creates comment variations for a trending post.
-func (s *GenerateService) GenerateComment(ctx context.Context, trendingPostID int64, platform string, count int) ([]models.GeneratedContent, error) {
+func (s *GenerateService) GenerateComment(ctx context.Context, userID string, trendingPostID int64, platform string, count int) ([]models.GeneratedContent, error) {
 	if s.cfg.Claude.APIKey == "" {
 		return nil, fmt.Errorf("Claude API key not configured")
 	}
@@ -191,7 +191,7 @@ func (s *GenerateService) GenerateComment(ctx context.Context, trendingPostID in
 		return nil, fmt.Errorf("cannot create %s comment on %s post (trending post %d)", platform, tp.Platform, trendingPostID)
 	}
 
-	persona, err := s.db.GetPersona(platform)
+	persona, err := s.db.GetPersona(userID, platform)
 	if err != nil {
 		return nil, fmt.Errorf("getting persona: %w", err)
 	}
@@ -223,7 +223,7 @@ func (s *GenerateService) GenerateComment(ctx context.Context, trendingPostID in
 			QuoteTweetID:     tp.PlatformPostID,
 		}
 
-		id, err := s.db.InsertGeneratedContent(&gc)
+		id, err := s.db.InsertGeneratedContent(userID, &gc)
 		if err != nil {
 			return nil, fmt.Errorf("saving generated comment: %w", err)
 		}

@@ -18,8 +18,8 @@ func NewPersonaService(database *db.DB) *PersonaService {
 }
 
 // Get returns the persona for the given platform.
-func (s *PersonaService) Get(platform string) (*models.Persona, error) {
-	persona, err := s.db.GetPersona(platform)
+func (s *PersonaService) Get(userID string, platform string) (*models.Persona, error) {
+	persona, err := s.db.GetPersona(userID, platform)
 	if err != nil {
 		return nil, fmt.Errorf("getting persona for %s: %w", platform, err)
 	}

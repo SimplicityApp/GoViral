@@ -59,7 +59,7 @@ func (s *RepoService) ListAvailableRepos(ctx context.Context) ([]models.GitHubRe
 }
 
 // AddRepo validates a GitHub repo via the API and upserts it in the DB.
-func (s *RepoService) AddRepo(ctx context.Context, owner, name string) (*models.GitHubRepo, error) {
+func (s *RepoService) AddRepo(ctx context.Context, userID string, owner, name string) (*models.GitHubRepo, error) {
 	client := ghclient.NewClient(s.cfg.GitHub.PersonalAccessToken)
 
 	repo, err := client.GetRepo(ctx, owner, name)
@@ -67,7 +67,7 @@ func (s *RepoService) AddRepo(ctx context.Context, owner, name string) (*models.
 		return nil, fmt.Errorf("fetching repo %s/%s from GitHub: %w", owner, name, err)
 	}
 
-	if err := s.db.UpsertGitHubRepo(repo); err != nil {
+	if err := s.db.UpsertGitHubRepo(userID, repo); err != nil {
 		return nil, fmt.Errorf("saving repo %s/%s: %w", owner, name, err)
 	}
 
@@ -75,8 +75,8 @@ func (s *RepoService) AddRepo(ctx context.Context, owner, name string) (*models.
 }
 
 // ListRepos returns all tracked repositories.
-func (s *RepoService) ListRepos(ctx context.Context) ([]models.GitHubRepo, error) {
-	repos, err := s.db.ListGitHubRepos()
+func (s *RepoService) ListRepos(ctx context.Context, userID string) ([]models.GitHubRepo, error) {
+	repos, err := s.db.ListGitHubRepos(userID)
 	if err != nil {
 		return nil, fmt.Errorf("listing repos: %w", err)
 	}
@@ -84,16 +84,16 @@ func (s *RepoService) ListRepos(ctx context.Context) ([]models.GitHubRepo, error
 }
 
 // DeleteRepo removes a tracked repository by ID.
-func (s *RepoService) DeleteRepo(ctx context.Context, id int64) error {
-	if err := s.db.DeleteGitHubRepo(id); err != nil {
+func (s *RepoService) DeleteRepo(ctx context.Context, userID string, id int64) error {
+	if err := s.db.DeleteGitHubRepo(userID, id); err != nil {
 		return fmt.Errorf("deleting repo %d: %w", id, err)
 	}
 	return nil
 }
 
 // GetRepo returns a single tracked repository by ID.
-func (s *RepoService) GetRepo(ctx context.Context, id int64) (*models.GitHubRepo, error) {
-	repo, err := s.db.GetGitHubRepo(id)
+func (s *RepoService) GetRepo(ctx context.Context, userID string, id int64) (*models.GitHubRepo, error) {
+	repo, err := s.db.GetGitHubRepo(userID, id)
 	if err != nil {
 		return nil, fmt.Errorf("getting repo %d: %w", id, err)
 	}
@@ -101,16 +101,16 @@ func (s *RepoService) GetRepo(ctx context.Context, id int64) (*models.GitHubRepo
 }
 
 // UpdateRepoSettings updates the target audience and links for a repo.
-func (s *RepoService) UpdateRepoSettings(ctx context.Context, id int64, targetAudience string, links []models.RepoLink) (*models.GitHubRepo, error) {
-	if err := s.db.UpdateRepoSettings(id, targetAudience, links); err != nil {
+func (s *RepoService) UpdateRepoSettings(ctx context.Context, userID string, id int64, targetAudience string, links []models.RepoLink) (*models.GitHubRepo, error) {
+	if err := s.db.UpdateRepoSettings(userID, id, targetAudience, links); err != nil {
 		return nil, fmt.Errorf("updating repo %d settings: %w", id, err)
 	}
-	return s.db.GetGitHubRepo(id)
+	return s.db.GetGitHubRepo(userID, id)
 }
 
 // GetContentByID returns a generated content record by ID.
-func (s *RepoService) GetContentByID(ctx context.Context, id int64) (*models.GeneratedContent, error) {
-	return s.db.GetGeneratedContentByID(id)
+func (s *RepoService) GetContentByID(ctx context.Context, userID string, id int64) (*models.GeneratedContent, error) {
+	return s.db.GetGeneratedContentByID(userID, id)
 }
 
 // FetchCommits fetches commits from GitHub for the given repo, upserts them in
@@ -121,10 +121,10 @@ func (s *RepoService) GetContentByID(ctx context.Context, id int64) (*models.Gen
 // and uses it as the "since" filter (incremental fetch). For repos with no
 // stored commits yet, all commits are fetched. When limit > 0, the total number
 // of fetched commits is capped; otherwise all available commits are returned.
-func (s *RepoService) FetchCommits(ctx context.Context, repoID int64, limit int, sinceStr string, progress chan<- dto.ProgressEvent) ([]models.RepoCommitRecord, error) {
+func (s *RepoService) FetchCommits(ctx context.Context, userID string, repoID int64, limit int, sinceStr string, progress chan<- dto.ProgressEvent) ([]models.RepoCommitRecord, error) {
 	defer close(progress)
 
-	repo, err := s.db.GetGitHubRepo(repoID)
+	repo, err := s.db.GetGitHubRepo(userID, repoID)
 	if err != nil {
 		return nil, fmt.Errorf("getting repo %d: %w", repoID, err)
 	}
@@ -262,7 +262,7 @@ func (s *RepoService) FetchCommits(ctx context.Context, repoID int64, limit int,
 }
 
 // ListCommits returns stored commits for a repo.
-func (s *RepoService) ListCommits(ctx context.Context, repoID int64, limit int) ([]models.RepoCommitRecord, error) {
+func (s *RepoService) ListCommits(ctx context.Context, userID string, repoID int64, limit int) ([]models.RepoCommitRecord, error) {
 	commits, err := s.db.ListRepoCommits(repoID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing commits for repo %d: %w", repoID, err)
@@ -273,7 +273,7 @@ func (s *RepoService) ListCommits(ctx context.Context, repoID int64, limit int) 
 // GenerateFromCommits loads commits, loads persona, calls the generator, optionally
 // renders a code image, and stores the results as GeneratedContent records with
 // source_type='commit'. The progress channel is always closed when this function returns.
-func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateRepoPostRequest, progress chan<- dto.ProgressEvent) ([]models.GeneratedContent, error) {
+func (s *RepoService) GenerateFromCommits(ctx context.Context, userID string, req dto.GenerateRepoPostRequest, progress chan<- dto.ProgressEvent) ([]models.GeneratedContent, error) {
 	defer close(progress)
 
 	if s.cfg.Claude.APIKey == "" {
@@ -303,7 +303,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 		Percentage: 5,
 	}
 
-	persona, err := s.db.GetPersona(targetPlatform)
+	persona, err := s.db.GetPersona(userID, targetPlatform)
 	if err != nil {
 		return nil, fmt.Errorf("getting persona for %s: %w", targetPlatform, err)
 	}
@@ -339,7 +339,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 			return nil, fmt.Errorf("commit %d not found", commitID)
 		}
 
-		repo, err := s.db.GetGitHubRepo(rc.RepoID)
+		repo, err := s.db.GetGitHubRepo(userID, rc.RepoID)
 		if err != nil {
 			return nil, fmt.Errorf("getting repo %d for commit %d: %w", rc.RepoID, commitID, err)
 		}
@@ -426,7 +426,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 					if err != nil {
 						slog.Error("rendering AI-selected code image", "commit_id", commitID, "error", err)
 						// Fallback to heuristic
-						_, savedPath, err = s.RenderCodeImage(ctx, commitID, codeImageTemplate, codeImageTheme)
+						_, savedPath, err = s.RenderCodeImage(ctx, userID, commitID, codeImageTemplate, codeImageTheme)
 						if err != nil {
 							slog.Error("rendering fallback code image", "commit_id", commitID, "error", err)
 						} else {
@@ -438,7 +438,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 				} else {
 					// No AI snippet — use heuristic fallback
 					slog.Warn("no AI code snippet returned, using heuristic", "commit_id", commitID, "variation", ri+1)
-					_, savedPath, err := s.RenderCodeImage(ctx, commitID, codeImageTemplate, codeImageTheme)
+					_, savedPath, err := s.RenderCodeImage(ctx, userID, commitID, codeImageTemplate, codeImageTheme)
 					if err != nil {
 						slog.Error("rendering code image", "commit_id", commitID, "error", err)
 					} else {
@@ -465,7 +465,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 				CodeImageDescription: codeImageDescription,
 			}
 
-			id, err := s.db.InsertGeneratedContent(&gc)
+			id, err := s.db.InsertGeneratedContent(userID, &gc)
 			if err != nil {
 				return nil, fmt.Errorf("saving generated content for commit %d: %w", commitID, err)
 			}
@@ -487,7 +487,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, req dto.GenerateR
 // RenderCodeImage renders a diff image for the given commit, saves it to
 // ~/.goviral/images/, and returns the PNG bytes, the saved path, and any error.
 // templateName and themeName are optional; empty strings use defaults.
-func (s *RepoService) RenderCodeImage(ctx context.Context, commitID int64, templateName, themeName string) ([]byte, string, error) {
+func (s *RepoService) RenderCodeImage(ctx context.Context, userID string, commitID int64, templateName, themeName string) ([]byte, string, error) {
 	rc, err := s.db.GetRepoCommitByID(commitID)
 	if err != nil {
 		return nil, "", fmt.Errorf("getting commit %d: %w", commitID, err)
@@ -620,8 +620,8 @@ func (s *RepoService) RenderCodeImageFromSnippet(ctx context.Context, snippet mo
 // ReRenderCodeImage re-renders the code image for an existing content item
 // using the current CodeImageDescription stored in the DB. It overwrites
 // the existing PNG file and returns the updated path.
-func (s *RepoService) ReRenderCodeImage(ctx context.Context, contentID int64) (string, error) {
-	gc, err := s.db.GetGeneratedContentByID(contentID)
+func (s *RepoService) ReRenderCodeImage(ctx context.Context, userID string, contentID int64) (string, error) {
+	gc, err := s.db.GetGeneratedContentByID(userID, contentID)
 	if err != nil {
 		return "", fmt.Errorf("getting content %d: %w", contentID, err)
 	}

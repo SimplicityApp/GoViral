@@ -11,6 +11,8 @@ import (
 	"github.com/shuhao/goviral/pkg/models"
 )
 
+const testUserID = "test-user-1"
+
 // --- helpers ---
 
 func setupTestService(t *testing.T) (*PublishService, *db.DB) {
@@ -39,7 +41,7 @@ func insertContent(t *testing.T, testDB *db.DB, gc *models.GeneratedContent) int
 	if gc.GeneratedContent == "" {
 		gc.GeneratedContent = "test content"
 	}
-	id, err := testDB.InsertGeneratedContent(gc)
+	id, err := testDB.InsertGeneratedContent(testUserID, gc)
 	if err != nil {
 		t.Fatalf("inserting test content: %v", err)
 	}
@@ -141,7 +143,7 @@ func TestPublishX_Comment(t *testing.T) {
 	mock := &mockXPoster{returnID: "reply-456"}
 	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
 
-	ids, parts, err := svc.PublishX(context.Background(), id, false)
+	ids, parts, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,7 +158,7 @@ func TestPublishX_Comment(t *testing.T) {
 	}
 
 	// Verify DB status updated
-	gc, _ := testDB.GetGeneratedContentByID(id)
+	gc, _ := testDB.GetGeneratedContentByID(testUserID, id)
 	if gc.Status != "posted" {
 		t.Fatalf("expected status 'posted', got %q", gc.Status)
 	}
@@ -173,7 +175,7 @@ func TestPublishX_RegularPost(t *testing.T) {
 	mock := &mockXPoster{returnID: "tweet-789"}
 	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
 
-	ids, _, err := svc.PublishX(context.Background(), id, false)
+	ids, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,7 +198,7 @@ func TestPublishLinkedIn_Comment(t *testing.T) {
 	mock := &mockLinkedInCommenter{returnID: "urn:li:comment:456"}
 	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
 
-	ids, parts, err := svc.PublishLinkedIn(context.Background(), id)
+	ids, parts, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -210,7 +212,7 @@ func TestPublishLinkedIn_Comment(t *testing.T) {
 		t.Fatalf("expected 1 part, got %d", len(parts))
 	}
 
-	gc, _ := testDB.GetGeneratedContentByID(id)
+	gc, _ := testDB.GetGeneratedContentByID(testUserID, id)
 	if gc.Status != "posted" {
 		t.Fatalf("expected status 'posted', got %q", gc.Status)
 	}
@@ -227,7 +229,7 @@ func TestPublishLinkedIn_RegularPost(t *testing.T) {
 	mock := &mockLinkedInPoster{returnID: "urn:li:share:789"}
 	swapFactory(t, &newLinkedInPoster, func(_ config.LinkedInConfig) models.LinkedInPoster { return mock })
 
-	ids, _, err := svc.PublishLinkedIn(context.Background(), id)
+	ids, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,7 +255,7 @@ func TestPublish_DispatchesCommentToCorrectPlatform(t *testing.T) {
 		mock := &mockXPoster{returnID: "reply-x"}
 		swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
 
-		ids, _, err := svc.Publish(context.Background(), id, false)
+		ids, _, err := svc.Publish(context.Background(), testUserID, id, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -276,7 +278,7 @@ func TestPublish_DispatchesCommentToCorrectPlatform(t *testing.T) {
 		mock := &mockLinkedInCommenter{returnID: "urn:li:comment:new"}
 		swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
 
-		ids, _, err := svc.Publish(context.Background(), id, false)
+		ids, _, err := svc.Publish(context.Background(), testUserID, id, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -302,7 +304,7 @@ func TestPublishX_QuoteTweet(t *testing.T) {
 	mock := &mockXQuotePoster{returnID: "qt-001"}
 	swapFactory(t, &newXQuotePoster, func(_ config.XConfig) models.QuotePoster { return mock })
 
-	ids, _, err := svc.PublishX(context.Background(), id, false)
+	ids, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -325,7 +327,7 @@ func TestPublishLinkedIn_Repost(t *testing.T) {
 	mock := &mockLinkedInReposter{returnID: "urn:li:share:reposted"}
 	swapFactory(t, &newLinkedInReposter, func(_ config.LinkedInConfig) models.LinkedInReposter { return mock })
 
-	ids, _, err := svc.PublishLinkedIn(context.Background(), id)
+	ids, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -341,7 +343,7 @@ func TestPublishLinkedIn_Repost(t *testing.T) {
 
 func TestPublishX_ContentNotFound(t *testing.T) {
 	svc, _ := setupTestService(t)
-	_, _, err := svc.PublishX(context.Background(), 9999, false)
+	_, _, err := svc.PublishX(context.Background(), testUserID, 9999, false)
 	if err == nil {
 		t.Fatal("expected error for missing content")
 	}
@@ -355,9 +357,9 @@ func TestPublishX_AlreadyPosted(t *testing.T) {
 	})
 
 	// Need to set status to posted via the DB since insertContent uses the given status
-	_ = testDB.UpdateGeneratedContentPosted(id, "some-id")
+	_ = testDB.UpdateGeneratedContentPosted(testUserID, id, "some-id")
 
-	_, _, err := svc.PublishX(context.Background(), id, false)
+	_, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err == nil {
 		t.Fatal("expected error for already-posted content")
 	}
@@ -369,7 +371,7 @@ func TestPublishX_WrongPlatform(t *testing.T) {
 		TargetPlatform: "linkedin",
 	})
 
-	_, _, err := svc.PublishX(context.Background(), id, false)
+	_, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err == nil {
 		t.Fatal("expected error for wrong platform")
 	}
@@ -377,7 +379,7 @@ func TestPublishX_WrongPlatform(t *testing.T) {
 
 func TestPublishLinkedIn_ContentNotFound(t *testing.T) {
 	svc, _ := setupTestService(t)
-	_, _, err := svc.PublishLinkedIn(context.Background(), 9999)
+	_, _, err := svc.PublishLinkedIn(context.Background(), testUserID, 9999)
 	if err == nil {
 		t.Fatal("expected error for missing content")
 	}
@@ -388,9 +390,9 @@ func TestPublishLinkedIn_AlreadyPosted(t *testing.T) {
 	id := insertContent(t, testDB, &models.GeneratedContent{
 		TargetPlatform: "linkedin",
 	})
-	_ = testDB.UpdateGeneratedContentPosted(id, "some-id")
+	_ = testDB.UpdateGeneratedContentPosted(testUserID, id, "some-id")
 
-	_, _, err := svc.PublishLinkedIn(context.Background(), id)
+	_, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err == nil {
 		t.Fatal("expected error for already-posted content")
 	}
@@ -402,7 +404,7 @@ func TestPublishLinkedIn_WrongPlatform(t *testing.T) {
 		TargetPlatform: "x",
 	})
 
-	_, _, err := svc.PublishLinkedIn(context.Background(), id)
+	_, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err == nil {
 		t.Fatal("expected error for wrong platform")
 	}
@@ -414,7 +416,7 @@ func TestPublish_UnsupportedPlatform(t *testing.T) {
 		TargetPlatform: "mastodon",
 	})
 
-	_, _, err := svc.Publish(context.Background(), id, false)
+	_, _, err := svc.Publish(context.Background(), testUserID, id, false)
 	if err == nil {
 		t.Fatal("expected error for unsupported platform")
 	}
@@ -431,7 +433,7 @@ func TestPublishX_CommentError(t *testing.T) {
 	mock := &mockXPoster{returnErr: fmt.Errorf("network error")}
 	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
 
-	_, _, err := svc.PublishX(context.Background(), id, false)
+	_, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err == nil {
 		t.Fatal("expected error from failed comment")
 	}
@@ -448,7 +450,7 @@ func TestPublishLinkedIn_CommentError(t *testing.T) {
 	mock := &mockLinkedInCommenter{returnErr: fmt.Errorf("api error")}
 	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
 
-	_, _, err := svc.PublishLinkedIn(context.Background(), id)
+	_, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err == nil {
 		t.Fatal("expected error from failed comment")
 	}
