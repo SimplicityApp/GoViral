@@ -334,17 +334,15 @@ async def main():
     cookies_path = os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json")
     client = LinkitinClient(cookies_path=cookies_path)
 
-    # Try to load saved cookies on startup.
-    loaded = False
-    try:
-        loaded = await client.login_from_saved()
-    except Exception:
-        pass
-
-    if loaded and sys.platform != "darwin":
-        # Initialize headless Chromium with the saved cookies.
-        li_at = getattr(client.session, "_li_at", None)
-        jsessionid = getattr(client.session, "_jsessionid", None)
+    if sys.platform != "darwin":
+        # On Linux: skip REST-based session validation (LinkedIn returns 403).
+        # Just load cookies from file and set up headless Chromium directly.
+        cookies_loaded = client.session.load_cookies()
+        li_at = None
+        jsessionid = None
+        if cookies_loaded:
+            li_at = getattr(client.session, "_li_at", None)
+            jsessionid = getattr(client.session, "_jsessionid", None)
         if not li_at or not jsessionid:
             # Read cookies from the file directly as fallback.
             try:
@@ -355,27 +353,29 @@ async def main():
             except Exception:
                 pass
         if li_at and jsessionid:
+            # Set cookies on the session so linkitin thinks we're logged in.
+            if not cookies_loaded:
+                await client.login_with_cookies(li_at, jsessionid)
             try:
                 _setup_headless_chrome(li_at, jsessionid)
             except Exception as e:
                 print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
-
-    if not loaded and os.path.exists(_CHROME_PROXY_MARKER):
-        if sys.platform != "darwin":
-            # Chrome proxy requires osascript (macOS only) — remove stale marker.
-            try:
-                os.unlink(_CHROME_PROXY_MARKER)
-            except OSError:
-                pass
         else:
-            # Chrome proxy mode was previously activated (extract-cookies used).
-            # Restore it: route all requests through Chrome's live session.
+            print("[goviral] no LinkedIn cookies found, skipping headless Chrome", file=sys.stderr)
+    else:
+        # On macOS: use normal login flow (validates via REST or Chrome proxy).
+        loaded = False
+        try:
+            loaded = await client.login_from_saved()
+        except Exception:
+            pass
+
+        if not loaded and os.path.exists(_CHROME_PROXY_MARKER):
             try:
                 from linkitin.chrome_proxy import chrome_validate_session
                 if chrome_validate_session():
                     client.session.use_chrome_proxy = True
                 else:
-                    # Chrome no longer has a valid LinkedIn session — clear the marker.
                     os.unlink(_CHROME_PROXY_MARKER)
             except Exception:
                 pass
