@@ -1,10 +1,10 @@
 // GoViral — LinkedIn Voyager API helpers (injected into page MAIN world)
 // All functions are self-contained (no imports). Use goviralXxx prefix to avoid conflicts.
+// Endpoint paths and parsing logic aligned with the linkitin Python library.
 
 function goviralGetCsrfToken() {
   const match = document.cookie.match(/JSESSIONID=([^;]+)/);
   if (!match) return null;
-  // Strip surrounding quotes if present
   return match[1].replace(/^"/, "").replace(/"$/, "");
 }
 
@@ -12,180 +12,211 @@ function goviralLinkedInHeaders() {
   const token = goviralGetCsrfToken();
   return {
     "csrf-token": token || "",
-    "accept": "application/vnd.linkedin.normalized+json+2.1",
+    accept: "application/vnd.linkedin.normalized+json+2.1",
     "x-restli-protocol-version": "2.0.0",
   };
 }
 
-// Parse LinkedIn normalized JSON: resolve included entities and extract posts.
-function goviralParseNormalizedPosts(data) {
+// --- Parsing (mirrors linkitin/feed.py _parse_feed_response) ---
+
+const GOVIRAL_POST_TYPES = [
+  "com.linkedin.voyager.feed.render.UpdateV2",
+  "com.linkedin.voyager.feed.Update",
+  "com.linkedin.voyager.dash.feed.Update",
+  "com.linkedin.voyager.identity.profile.ProfileUpdate",
+];
+
+function goviralIsPostEntity(entityType) {
+  return GOVIRAL_POST_TYPES.some((pt) => entityType.includes(pt));
+}
+
+function goviralExtractText(entity) {
+  // commentary.text.text (most common)
+  const commentary = entity.commentary;
+  if (commentary && typeof commentary === "object") {
+    const text = commentary.text;
+    if (typeof text === "object" && text !== null) return text.text || "";
+    if (typeof text === "string") return text;
+  }
+  // content → TextComponent
+  const content = entity.content;
+  if (content && typeof content === "object") {
+    const tc =
+      content["com.linkedin.voyager.feed.render.TextComponent"];
+    if (tc && typeof tc === "object") {
+      const t = tc.text;
+      if (typeof t === "object" && t !== null) return t.text || "";
+    }
+  }
+  // specificContent (older format)
+  const specific = entity.specificContent;
+  if (specific && typeof specific === "object") {
+    const sc = specific["com.linkedin.ugc.ShareContent"];
+    if (sc && typeof sc === "object") {
+      const scText = sc.shareCommentary;
+      if (scText && typeof scText === "object") return scText.text || "";
+    }
+  }
+  // header.text.text
+  const header = entity.header;
+  if (header && typeof header === "object") {
+    const ht = header.text;
+    if (typeof ht === "object" && ht !== null) return ht.text || "";
+  }
+  return "";
+}
+
+function goviralExtractSocialCounts(urn, entity, socialCounts, socialDetails) {
+  let likes = 0, comments = 0, reposts = 0, impressions = 0;
+
+  // Try socialDetail on entity itself
+  const sd = entity.socialDetail;
+  if (sd && typeof sd === "object") {
+    likes = sd.reactionSummary?.count || sd.totalReactionCount || 0;
+    comments = sd.commentSummary?.count || sd.totalComments || 0;
+    reposts = sd.totalShares || 0;
+  }
+
+  // Try SocialActivityCounts from included
+  const countEntity = socialCounts[urn] || null;
+  if (countEntity) {
+    likes = likes || countEntity.numLikes || 0;
+    comments = comments || countEntity.numComments || 0;
+    reposts = reposts || countEntity.numShares || 0;
+    impressions = countEntity.numImpressions || 0;
+  }
+
+  // Try SocialDetail from included
+  const detailEntity = socialDetails[urn] || null;
+  if (detailEntity) {
+    likes = likes || detailEntity.reactionSummary?.count || 0;
+    comments = comments || detailEntity.commentSummary?.count || 0;
+    reposts = reposts || detailEntity.totalShares || 0;
+  }
+
+  return { likes, comments, reposts, impressions };
+}
+
+function goviralExtractAuthor(entity, profiles) {
+  const actor = entity.actor;
+  if (actor && typeof actor === "object") {
+    let name = "";
+    if (typeof actor.name === "object" && actor.name !== null) {
+      name = actor.name.text || "";
+    } else if (typeof actor.name === "string") {
+      name = actor.name;
+    }
+    const actorUrn = actor.urn || "";
+    const profile = profiles[actorUrn] || null;
+    const username =
+      (profile && profile.publicIdentifier) ||
+      (actor.navigationUrl
+        ? actor.navigationUrl.replace(/.*\/in\//, "").replace(/\/.*/, "")
+        : null);
+    return { author_name: name, author_username: username || null };
+  }
+  // Fallback: author URN reference
+  const authorUrn = entity.author || "";
+  if (typeof authorUrn === "string" && profiles[authorUrn]) {
+    const p = profiles[authorUrn];
+    return {
+      author_name: [p.firstName, p.lastName].filter(Boolean).join(" "),
+      author_username: p.publicIdentifier || null,
+    };
+  }
+  return { author_name: null, author_username: null };
+}
+
+function goviralExtractCreatedAt(entity) {
+  const ms =
+    (entity.updateMetadata && entity.updateMetadata.publishedAt) ||
+    entity.createdAt ||
+    null;
+  return ms ? new Date(ms).toISOString() : null;
+}
+
+// Main parser: iterate included entities like linkitin does
+function goviralParseNormalizedPosts(data, limit) {
   const included = data.included || [];
-  // Build a lookup map by entityUrn
-  const entityMap = {};
+  const profiles = {};
+  const socialCounts = {};
+  const socialDetails = {};
+
+  // First pass: index profiles, social counts, social details
   for (const entity of included) {
-    if (entity.entityUrn) {
-      entityMap[entity.entityUrn] = entity;
+    const etype = entity.$type || "";
+    const eurn = entity.entityUrn || entity.urn || "";
+    if (etype.includes("MiniProfile") || etype.includes("Profile")) {
+      profiles[eurn] = entity;
+    } else if (etype.includes("SocialActivityCounts")) {
+      const parts = eurn.split("fsd_socialActivityCounts:");
+      if (parts.length === 2) socialCounts[parts[1]] = entity;
+      socialCounts[eurn] = entity;
+    } else if (etype.includes("SocialDetail")) {
+      const threadId = entity.threadId || eurn;
+      socialDetails[threadId] = entity;
     }
   }
 
+  // Second pass: extract posts
   const posts = [];
+  for (const entity of included) {
+    const etype = entity.$type || "";
+    if (!goviralIsPostEntity(etype)) continue;
 
-  // Elements may be in data.elements or data.data?.elements
-  const elements =
-    (data.data && data.data.elements) ||
-    data.elements ||
-    [];
+    const urn = entity.entityUrn || entity.urn || "";
+    if (!urn) continue;
 
-  for (const el of elements) {
-    try {
-      // Resolve the actual post entity if needed
-      const urn = el.updateMetadata?.urn || el.entityUrn || el["$id"] || null;
+    const text = goviralExtractText(entity);
+    if (!text) continue;
 
-      // Extract content text
-      let content = "";
-      const commentary =
-        el.commentary ||
-        el.content?.commentary ||
-        (el.value && el.value.com$linkedin$voyager$feed$render$UpdateV2 &&
-          el.value.com$linkedin$voyager$feed$render$UpdateV2.commentary) ||
-        null;
-      if (commentary && commentary.text && commentary.text.text) {
-        content = commentary.text.text;
-      }
+    const { likes, comments, reposts, impressions } =
+      goviralExtractSocialCounts(urn, entity, socialCounts, socialDetails);
+    const { author_name, author_username } =
+      goviralExtractAuthor(entity, profiles);
+    const posted_at = goviralExtractCreatedAt(entity);
 
-      // Extract social stats
-      const socialDetail =
-        el.socialDetail ||
-        el.value?.com$linkedin$voyager$feed$render$UpdateV2?.socialDetail ||
-        null;
-      const likes =
-        socialDetail?.reactionSummary?.count ||
-        el.numLikes ||
-        0;
-      const reposts =
-        socialDetail?.totalShares ||
-        el.numShares ||
-        0;
-      const comments =
-        socialDetail?.commentSummary?.count ||
-        el.numComments ||
-        0;
+    // Extract activity ID as platform post ID
+    const activityMatch = urn.match(/activity:(\d+)/);
+    const platform_post_id = activityMatch ? activityMatch[1] : urn;
 
-      // Impressions (not always available in Voyager)
-      const impressions = el.impressionCount || 0;
+    posts.push({
+      platform_post_id,
+      content: text,
+      likes,
+      reposts,
+      comments,
+      impressions,
+      posted_at,
+      author_name,
+      author_username,
+      niche_tags: [],
+    });
 
-      // Post time
-      const postedAtMs =
-        el.updateMetadata?.publishedAt ||
-        el.createdAt ||
-        null;
-      const posted_at = postedAtMs
-        ? new Date(postedAtMs).toISOString()
-        : null;
-
-      // Platform post id
-      const platform_post_id = urn
-        ? urn.replace(/^urn:li:activity:/, "")
-        : null;
-
-      // Author info (for feed/search)
-      let author_username = null;
-      let author_name = null;
-      const actor =
-        el.actor ||
-        el.value?.com$linkedin$voyager$feed$render$UpdateV2?.actor ||
-        null;
-      if (actor) {
-        author_name =
-          actor.name?.text ||
-          actor.name ||
-          null;
-        // LinkedIn doesn't expose usernames directly; use publicIdentifier if present
-        const actorUrn = actor.urn || "";
-        const profileEntity = entityMap[actorUrn] || null;
-        author_username =
-          (profileEntity && profileEntity.publicIdentifier) ||
-          null;
-      }
-
-      // Niche tags placeholder (populated by caller when relevant)
-      const niche_tags = [];
-
-      if (content || platform_post_id) {
-        posts.push({
-          platform_post_id,
-          content,
-          likes,
-          reposts,
-          comments,
-          impressions,
-          posted_at,
-          author_username,
-          author_name,
-          niche_tags,
-        });
-      }
-    } catch (_) {
-      // Skip malformed entries
-    }
+    if (limit && posts.length >= limit) break;
   }
 
   return posts;
 }
 
+// --- API functions ---
+
 async function goviralFetchMyPosts(count = 20) {
   try {
     const headers = goviralLinkedInHeaders();
 
-    // Step 1: Get own profile URN
-    const meResp = await fetch("/voyager/api/me", {
-      credentials: "include",
-      headers,
-    });
-    if (!meResp.ok) {
-      return { error: `Failed to fetch /voyager/api/me: ${meResp.status}` };
-    }
-    const meData = await meResp.json();
+    // Use the same endpoint as linkitin: /voyager/api/identity/profileUpdatesV2
+    const url =
+      `/voyager/api/identity/profileUpdatesV2` +
+      `?q=memberShareFeed&moduleKey=member-shares:phone` +
+      `&count=${Math.min(count, 50)}&start=0`;
 
-    // Extract miniProfile URN from the normalized response
-    const included = meData.included || [];
-    let profileUrn = null;
-    for (const entity of included) {
-      if (
-        entity.$type === "com.linkedin.voyager.identity.shared.MiniProfile" ||
-        (entity.entityUrn && entity.entityUrn.startsWith("urn:li:fs_miniProfile:"))
-      ) {
-        profileUrn = entity.entityUrn;
-        break;
-      }
+    const resp = await fetch(url, { credentials: "include", headers });
+    if (!resp.ok) {
+      return { error: `Failed to fetch my posts: ${resp.status}` };
     }
-    // Fallback: top-level miniProfile
-    if (!profileUrn && meData.data && meData.data.miniProfile) {
-      profileUrn = meData.data.miniProfile;
-    }
-
-    if (!profileUrn) {
-      return { error: "Could not determine profile URN from /voyager/api/me" };
-    }
-
-    // Step 2: Fetch posts for this profile
-    const postsUrl =
-      `/voyager/api/identity/dash/profileUpdatesByMemberProfile` +
-      `?memberProfile=${encodeURIComponent(profileUrn)}` +
-      `&q=memberProfile&moduleKey=creator_profile_all_updates_tab` +
-      `&count=${count}`;
-
-    const postsResp = await fetch(postsUrl, {
-      credentials: "include",
-      headers,
-    });
-    if (!postsResp.ok) {
-      return { error: `Failed to fetch posts: ${postsResp.status}` };
-    }
-    const postsData = await postsResp.json();
-
-    const posts = goviralParseNormalizedPosts(postsData);
-    return { posts };
+    const data = await resp.json();
+    return { posts: goviralParseNormalizedPosts(data, count) };
   } catch (err) {
     return { error: String(err) };
   }
@@ -195,17 +226,17 @@ async function goviralFetchFeed(count = 20) {
   try {
     const headers = goviralLinkedInHeaders();
 
-    const resp = await fetch(
-      `/voyager/api/feed/updates?q=FEED_UPDATES&count=${count}`,
-      { credentials: "include", headers }
-    );
+    // Use the same endpoint as linkitin: /voyager/api/feed/dash/feedUpdates
+    const url =
+      `/voyager/api/feed/dash/feedUpdates` +
+      `?q=DECORATED_FEED&count=${Math.min(count, 50)}&start=0`;
+
+    const resp = await fetch(url, { credentials: "include", headers });
     if (!resp.ok) {
       return { error: `Failed to fetch feed: ${resp.status}` };
     }
     const data = await resp.json();
-
-    const posts = goviralParseNormalizedPosts(data);
-    return { posts };
+    return { posts: goviralParseNormalizedPosts(data, count) };
   } catch (err) {
     return { error: String(err) };
   }
@@ -215,19 +246,18 @@ async function goviralSearchPosts(keywords, count = 20) {
   try {
     const headers = goviralLinkedInHeaders();
 
+    // Same endpoint as linkitin: /voyager/api/search/dash/clusters
     const url =
       `/voyager/api/search/dash/clusters` +
-      `?q=all&keywords=${encodeURIComponent(keywords)}&type=CONTENT&count=${count}`;
+      `?q=all&keywords=${encodeURIComponent(keywords)}` +
+      `&type=CONTENT&count=${count}`;
 
     const resp = await fetch(url, { credentials: "include", headers });
     if (!resp.ok) {
       return { error: `Failed to search posts: ${resp.status}` };
     }
     const data = await resp.json();
-
-    // Search results use clusters → items structure
-    const posts = goviralParseSearchResults(data);
-    return { posts };
+    return { posts: goviralParseNormalizedPosts(data, count) };
   } catch (err) {
     return { error: String(err) };
   }
@@ -237,11 +267,10 @@ async function goviralFetchTrending(keywords, count = 20) {
   try {
     const headers = goviralLinkedInHeaders();
 
-    // Sort by recency/engagement via origin=FACETED_SEARCH or similar
     const url =
       `/voyager/api/search/dash/clusters` +
-      `?q=all&keywords=${encodeURIComponent(keywords)}&type=CONTENT` +
-      `&count=${count}&origin=FACETED_SEARCH`;
+      `?q=all&keywords=${encodeURIComponent(keywords)}` +
+      `&type=CONTENT&count=${count}&origin=FACETED_SEARCH`;
 
     const resp = await fetch(url, { credentials: "include", headers });
     if (!resp.ok) {
@@ -249,100 +278,15 @@ async function goviralFetchTrending(keywords, count = 20) {
     }
     const data = await resp.json();
 
-    const posts = goviralParseSearchResults(data);
-    // Tag posts with niche keywords
+    const posts = goviralParseNormalizedPosts(data, count);
     const niche_tags = keywords
       ? keywords.split(/[\s,]+/).filter(Boolean)
       : [];
     for (const post of posts) {
       post.niche_tags = niche_tags;
     }
-
     return { posts };
   } catch (err) {
     return { error: String(err) };
   }
-}
-
-// Parse LinkedIn search clusters response into a flat posts array.
-function goviralParseSearchResults(data) {
-  const posts = [];
-  const included = data.included || [];
-  const entityMap = {};
-  for (const entity of included) {
-    if (entity.entityUrn) {
-      entityMap[entity.entityUrn] = entity;
-    }
-  }
-
-  const elements =
-    (data.data && data.data.elements) || data.elements || [];
-
-  for (const cluster of elements) {
-    const items =
-      cluster.items ||
-      (cluster.data && cluster.data.items) ||
-      [];
-
-    for (const item of items) {
-      try {
-        const entityUrn =
-          item.entityUrn ||
-          item.targetUrn ||
-          item.template?.entityUrn ||
-          null;
-
-        const entity = entityUrn ? entityMap[entityUrn] : null;
-
-        // Title / headline text
-        let content =
-          item.title?.text ||
-          item.headline?.text ||
-          (entity && entity.commentary && entity.commentary.text && entity.commentary.text.text) ||
-          "";
-
-        // Subtitle may contain snippet
-        if (!content && item.subTitle) {
-          content = item.subTitle.text || "";
-        }
-
-        const platform_post_id = entityUrn
-          ? entityUrn.replace(/^urn:li:activity:/, "")
-          : null;
-
-        // Author
-        let author_name = null;
-        let author_username = null;
-        if (item.target && item.target.actor) {
-          author_name = item.target.actor.name?.text || null;
-        }
-        if (entity && entity.actor) {
-          author_name = author_name || entity.actor.name?.text || null;
-          const actorUrn = entity.actor.urn || "";
-          const profileEntity = entityMap[actorUrn] || null;
-          author_username =
-            (profileEntity && profileEntity.publicIdentifier) || null;
-        }
-
-        if (content || platform_post_id) {
-          posts.push({
-            platform_post_id,
-            content,
-            likes: 0,
-            reposts: 0,
-            comments: 0,
-            impressions: 0,
-            posted_at: null,
-            author_username,
-            author_name,
-            niche_tags: [],
-          });
-        }
-      } catch (_) {
-        // Skip malformed entries
-      }
-    }
-  }
-
-  return posts;
 }
