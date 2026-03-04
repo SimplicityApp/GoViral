@@ -21,6 +21,7 @@ func NewTikTokHandler(publishSvc *service.PublishService) *TikTokHandler {
 
 // Upload handles POST /api/v1/tiktok/upload — publish video to TikTok.
 func (h *TikTokHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.VideoUploadRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -34,7 +35,7 @@ func (h *TikTokHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, _, err := h.publishSvc.PublishTikTok(r.Context(), req.ContentID)
+	postIDs, _, err := h.publishSvc.PublishTikTok(r.Context(), userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)

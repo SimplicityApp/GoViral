@@ -23,6 +23,7 @@ func NewHistoryWriteHandler(database *db.DB) *HistoryWriteHandler {
 
 // UpdateStatus updates the status of a generated content record.
 func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -56,7 +57,7 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Verify content exists
-	gc, err := h.db.GetGeneratedContentByID(id)
+	gc, err := h.db.GetGeneratedContentByID(userID, id)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to get content", reqID)
@@ -70,7 +71,7 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 
 	// Update content text if provided
 	if req.GeneratedContent != nil {
-		if err := h.db.UpdateGeneratedContentText(id, *req.GeneratedContent); err != nil {
+		if err := h.db.UpdateGeneratedContentText(userID, id, *req.GeneratedContent); err != nil {
 			reqID := middleware.RequestIDFromContext(r.Context())
 			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to update content", reqID)
 			return
@@ -80,7 +81,7 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 
 	// Update code image description if provided
 	if req.CodeImageDescription != nil {
-		if err := h.db.UpdateCodeImageDescription(id, *req.CodeImageDescription); err != nil {
+		if err := h.db.UpdateCodeImageDescription(userID, id, *req.CodeImageDescription); err != nil {
 			reqID := middleware.RequestIDFromContext(r.Context())
 			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to update code image description", reqID)
 			return
@@ -90,7 +91,7 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 
 	// Update status if provided
 	if req.Status != "" {
-		if err := h.db.UpdateGeneratedContentStatus(id, req.Status); err != nil {
+		if err := h.db.UpdateGeneratedContentStatus(userID, id, req.Status); err != nil {
 			reqID := middleware.RequestIDFromContext(r.Context())
 			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to update status", reqID)
 			return
@@ -103,6 +104,7 @@ func (h *HistoryWriteHandler) UpdateStatus(w http.ResponseWriter, r *http.Reques
 
 // Delete removes a generated content record.
 func (h *HistoryWriteHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -111,7 +113,7 @@ func (h *HistoryWriteHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gc, err := h.db.GetGeneratedContentByID(id)
+	gc, err := h.db.GetGeneratedContentByID(userID, id)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to get content", reqID)
@@ -123,7 +125,7 @@ func (h *HistoryWriteHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.DeleteGeneratedContent(id); err != nil {
+	if err := h.db.DeleteGeneratedContent(userID, id); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to delete content", reqID)
 		return

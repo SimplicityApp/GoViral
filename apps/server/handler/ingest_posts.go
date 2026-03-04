@@ -21,6 +21,7 @@ func NewIngestPostsHandler(database *db.DB) *IngestPostsHandler {
 }
 
 func (h *IngestPostsHandler) Post(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.IngestPostsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		middleware.WriteError(w, http.StatusBadRequest, dto.ErrCodeValidation, "invalid request body", "")
@@ -60,7 +61,7 @@ func (h *IngestPostsHandler) Post(w http.ResponseWriter, r *http.Request) {
 			Impressions:    p.Impressions,
 			PostedAt:       postedAt,
 		}
-		if err := h.db.UpsertPost(&post); err != nil {
+		if err := h.db.UpsertPost(userID, &post); err != nil {
 			middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to upsert post", "")
 			return
 		}

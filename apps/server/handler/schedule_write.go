@@ -27,6 +27,7 @@ func NewScheduleWriteHandler(database *db.DB, publishSvc *service.PublishService
 
 // Create schedules a post for future publishing.
 func (h *ScheduleWriteHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.ScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -48,7 +49,7 @@ func (h *ScheduleWriteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify the content exists
-	gc, err := h.db.GetGeneratedContentByID(req.ContentID)
+	gc, err := h.db.GetGeneratedContentByID(userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to verify content", reqID)
@@ -61,9 +62,9 @@ func (h *ScheduleWriteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try native scheduling via platform; fall back to pending for RunDue if it fails
-	scheduledPostID, schedErr := h.publishSvc.Schedule(r.Context(), req.ContentID, scheduledAt)
+	scheduledPostID, schedErr := h.publishSvc.Schedule(r.Context(), userID, req.ContentID, scheduledAt)
 
-	id, err := h.db.InsertScheduledPost(req.ContentID, scheduledAt)
+	id, err := h.db.InsertScheduledPost(userID, req.ContentID, scheduledAt)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to save schedule record", reqID)
@@ -117,6 +118,7 @@ func (h *ScheduleWriteHandler) Acknowledge(w http.ResponseWriter, r *http.Reques
 
 // Delete cancels a scheduled post.
 func (h *ScheduleWriteHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -125,7 +127,7 @@ func (h *ScheduleWriteHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.DeleteScheduledPost(id); err != nil {
+	if err := h.db.DeleteScheduledPost(userID, id); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusNotFound, dto.ErrCodeNotFound, "scheduled post not found", reqID)
 		return
@@ -145,7 +147,7 @@ func (h *ScheduleWriteHandler) RunDue(w http.ResponseWriter, r *http.Request) {
 
 	var results []map[string]interface{}
 	for _, sp := range pending {
-		postIDs, _, pubErr := h.publishSvc.Publish(r.Context(), sp.GeneratedContentID, false)
+		postIDs, _, pubErr := h.publishSvc.Publish(r.Context(), sp.UserID, sp.GeneratedContentID, false)
 		if pubErr != nil {
 			h.db.UpdateScheduledPostStatus(sp.ID, "failed", pubErr.Error())
 			results = append(results, map[string]interface{}{

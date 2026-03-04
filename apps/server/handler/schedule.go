@@ -23,10 +23,11 @@ func NewScheduleHandler(svc *service.ScheduleService, database *db.DB) *Schedule
 
 // List returns scheduled posts with optional status filter.
 func (h *ScheduleHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	status := r.URL.Query().Get("status")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	posts, err := h.svc.List(status, limit)
+	posts, err := h.svc.List(userID, status, limit)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list scheduled posts", reqID)
@@ -44,7 +45,7 @@ func (h *ScheduleHandler) List(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:          sp.CreatedAt,
 		}
 		// Look up content preview
-		gc, err := h.db.GetGeneratedContentByID(sp.GeneratedContentID)
+		gc, err := h.db.GetGeneratedContentByID(userID, sp.GeneratedContentID)
 		if err == nil && gc != nil {
 			preview := gc.GeneratedContent
 			if len(preview) > 120 {

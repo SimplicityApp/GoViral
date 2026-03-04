@@ -37,6 +37,8 @@ func (h *GenerateHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
+
 	if WantsSSE(r) {
 		svcProgress := make(chan dto.ProgressEvent, 10)
 		clientProgress := make(chan dto.ProgressEvent, 10)
@@ -48,7 +50,7 @@ func (h *GenerateHandler) Post(w http.ResponseWriter, r *http.Request) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				result, genErr = h.svc.Generate(r.Context(), req, svcProgress)
+				result, genErr = h.svc.Generate(r.Context(), userID, req, svcProgress)
 			}()
 
 			for evt := range svcProgress {
@@ -84,7 +86,7 @@ func (h *GenerateHandler) Post(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
 		go func() {
-			result, err := h.svc.Generate(context.Background(), req, progress)
+			result, err := h.svc.Generate(context.Background(), userID, req, progress)
 			if err != nil {
 				h.store.Fail(opID, err.Error())
 				return

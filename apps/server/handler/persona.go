@@ -20,6 +20,7 @@ func NewPersonaHandler(svc *service.PersonaService) *PersonaHandler {
 
 // Get returns the persona for the queried platform.
 func (h *PersonaHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	platform := r.URL.Query().Get("platform")
 	if platform == "" {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -27,7 +28,7 @@ func (h *PersonaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persona, err := h.svc.Get(platform)
+	persona, err := h.svc.Get(userID, platform)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to get persona", reqID)

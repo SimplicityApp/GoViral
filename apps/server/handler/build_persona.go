@@ -42,9 +42,11 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 		req.Platform = "x"
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
+
 	if WantsSSE(r) {
 		progress := make(chan dto.ProgressEvent, 10)
-		go h.doBuild(r.Context(), req.Platform, progress)
+		go h.doBuild(r.Context(), userID, req.Platform, progress)
 		StreamProgress(w, r, progress)
 		return
 	}
@@ -52,7 +54,7 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 	opID := h.store.Create()
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
-		go h.doBuild(context.Background(), req.Platform, progress)
+		go h.doBuild(context.Background(), userID, req.Platform, progress)
 		var lastErr string
 		for evt := range progress {
 			if evt.Type == "error" {
@@ -72,7 +74,7 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *BuildPersonaHandler) doBuild(ctx context.Context, platform string, progress chan<- dto.ProgressEvent) {
+func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platform string, progress chan<- dto.ProgressEvent) {
 	defer close(progress)
 
 	if h.cfg.Claude.APIKey == "" {
@@ -89,9 +91,9 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, platform string, prog
 	var posts []models.Post
 	var err error
 	if platform != "" {
-		posts, err = h.db.GetPostsByPlatform(platform)
+		posts, err = h.db.GetPostsByPlatform(userID, platform)
 	} else {
-		posts, err = h.db.GetAllPosts()
+		posts, err = h.db.GetAllPosts(userID)
 	}
 	if err != nil {
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("loading posts: %v", err)}
@@ -128,7 +130,7 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, platform string, prog
 		Platform: platform,
 		Profile:  *profile,
 	}
-	if err := h.db.UpsertPersona(p); err != nil {
+	if err := h.db.UpsertPersona(userID, p); err != nil {
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("saving persona: %v", err)}
 		return
 	}

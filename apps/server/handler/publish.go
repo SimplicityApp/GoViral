@@ -21,6 +21,7 @@ func NewPublishHandler(svc *service.PublishService) *PublishHandler {
 
 // Post publishes content to the target platform.
 func (h *PublishHandler) Post(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PublishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -34,7 +35,7 @@ func (h *PublishHandler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, threadParts, err := h.svc.Publish(r.Context(), req.ContentID, req.Numbered)
+	postIDs, threadParts, err := h.svc.Publish(r.Context(), userID, req.ContentID, req.Numbered)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
@@ -49,6 +50,7 @@ func (h *PublishHandler) Post(w http.ResponseWriter, r *http.Request) {
 
 // PostX handles X-specific publish requests.
 func (h *PublishHandler) PostX(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PublishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -62,7 +64,7 @@ func (h *PublishHandler) PostX(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, threadParts, err := h.svc.PublishX(r.Context(), req.ContentID, req.Numbered)
+	postIDs, threadParts, err := h.svc.PublishX(r.Context(), userID, req.ContentID, req.Numbered)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
@@ -77,6 +79,7 @@ func (h *PublishHandler) PostX(w http.ResponseWriter, r *http.Request) {
 
 // PostYouTube handles YouTube-specific publish requests.
 func (h *PublishHandler) PostYouTube(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PublishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -90,7 +93,7 @@ func (h *PublishHandler) PostYouTube(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, threadParts, err := h.svc.PublishYouTube(r.Context(), req.ContentID)
+	postIDs, threadParts, err := h.svc.PublishYouTube(r.Context(), userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
@@ -105,6 +108,7 @@ func (h *PublishHandler) PostYouTube(w http.ResponseWriter, r *http.Request) {
 
 // PostTikTok handles TikTok-specific publish requests.
 func (h *PublishHandler) PostTikTok(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PublishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -118,7 +122,7 @@ func (h *PublishHandler) PostTikTok(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, threadParts, err := h.svc.PublishTikTok(r.Context(), req.ContentID)
+	postIDs, threadParts, err := h.svc.PublishTikTok(r.Context(), userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)
@@ -133,6 +137,7 @@ func (h *PublishHandler) PostTikTok(w http.ResponseWriter, r *http.Request) {
 
 // PostLinkedIn handles LinkedIn-specific publish requests.
 func (h *PublishHandler) PostLinkedIn(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PublishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -146,7 +151,7 @@ func (h *PublishHandler) PostLinkedIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs, threadParts, err := h.svc.PublishLinkedIn(r.Context(), req.ContentID)
+	postIDs, threadParts, err := h.svc.PublishLinkedIn(r.Context(), userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodePlatformError, err.Error(), reqID)

@@ -36,10 +36,11 @@ func (h *FetchPostsHandler) Post(w http.ResponseWriter, r *http.Request) {
 		req = dto.FetchPostsRequest{} // default: all platforms
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
 	progress := make(chan dto.ProgressEvent, 10)
 
 	if WantsSSE(r) {
-		go h.doFetch(r.Context(), req.Platform, progress)
+		go h.doFetch(r.Context(), userID, req.Platform, progress)
 		StreamProgress(w, r, progress)
 		return
 	}
@@ -47,7 +48,7 @@ func (h *FetchPostsHandler) Post(w http.ResponseWriter, r *http.Request) {
 	// Background mode: return 202 with operation ID
 	opID := h.store.Create()
 	go func() {
-		h.doFetch(context.Background(), req.Platform, progress)
+		h.doFetch(context.Background(), userID, req.Platform, progress)
 		// Drain and use the last event
 		var lastErr string
 		for evt := range progress {
@@ -68,7 +69,7 @@ func (h *FetchPostsHandler) Post(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *FetchPostsHandler) doFetch(ctx context.Context, platform string, progress chan<- dto.ProgressEvent) {
+func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform string, progress chan<- dto.ProgressEvent) {
 	defer close(progress)
 
 	platforms := []string{"x", "linkedin"}
@@ -112,7 +113,7 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, platform string, progre
 
 		for _, post := range posts {
 			post := post
-			if err := h.db.UpsertPost(&post); err != nil {
+			if err := h.db.UpsertPost(userID, &post); err != nil {
 				slog.Error("saving post", "platform", p, "error", err)
 			}
 		}

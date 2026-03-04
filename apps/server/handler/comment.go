@@ -25,6 +25,7 @@ func NewCommentHandler(publishSvc *service.PublishService, generateSvc *service.
 
 // GenerateComment generates AI comment variations for a trending post.
 func (h *CommentHandler) GenerateComment(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.GenerateCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -38,7 +39,7 @@ func (h *CommentHandler) GenerateComment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	contents, err := h.generateSvc.GenerateComment(r.Context(), req.TrendingPostID, req.Platform, req.Count)
+	contents, err := h.generateSvc.GenerateComment(r.Context(), userID, req.TrendingPostID, req.Platform, req.Count)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -55,6 +56,7 @@ func (h *CommentHandler) GenerateComment(w http.ResponseWriter, r *http.Request)
 
 // PostComment publishes a generated comment to the appropriate platform.
 func (h *CommentHandler) PostComment(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.PostCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -68,7 +70,7 @@ func (h *CommentHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commentURN, err := h.publishSvc.Comment(r.Context(), req.ContentID)
+	commentURN, err := h.publishSvc.Comment(r.Context(), userID, req.ContentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		slog.Error("comment publish failed",
@@ -80,7 +82,7 @@ func (h *CommentHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gc, _ := h.db.GetGeneratedContentByID(req.ContentID)
+	gc, _ := h.db.GetGeneratedContentByID(userID, req.ContentID)
 	var content dto.GeneratedContentResponse
 	if gc != nil {
 		content = contentToResponse(*gc)

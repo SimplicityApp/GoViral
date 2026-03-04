@@ -58,7 +58,8 @@ func (h *RepoHandler) ListAvailableRepos(w http.ResponseWriter, r *http.Request)
 
 // ListRepos returns all tracked repositories.
 func (h *RepoHandler) ListRepos(w http.ResponseWriter, r *http.Request) {
-	repos, err := h.svc.ListRepos(r.Context())
+	userID := middleware.UserIDFromContext(r.Context())
+	repos, err := h.svc.ListRepos(r.Context(), userID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list repos", reqID)
@@ -75,6 +76,7 @@ func (h *RepoHandler) ListRepos(w http.ResponseWriter, r *http.Request) {
 
 // AddRepo validates and adds a GitHub repo to tracking.
 func (h *RepoHandler) AddRepo(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.AddRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -88,7 +90,7 @@ func (h *RepoHandler) AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := h.svc.AddRepo(r.Context(), req.Owner, req.Name)
+	repo, err := h.svc.AddRepo(r.Context(), userID, req.Owner, req.Name)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -100,6 +102,7 @@ func (h *RepoHandler) AddRepo(w http.ResponseWriter, r *http.Request) {
 
 // DeleteRepo removes a tracked repository.
 func (h *RepoHandler) DeleteRepo(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -108,7 +111,7 @@ func (h *RepoHandler) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteRepo(r.Context(), id); err != nil {
+	if err := h.svc.DeleteRepo(r.Context(), userID, id); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
 		return
@@ -119,6 +122,7 @@ func (h *RepoHandler) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 
 // ListCommits returns stored commits for a repo.
 func (h *RepoHandler) ListCommits(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	repoID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -129,7 +133,7 @@ func (h *RepoHandler) ListCommits(w http.ResponseWriter, r *http.Request) {
 
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	commits, err := h.svc.ListCommits(r.Context(), repoID, limit)
+	commits, err := h.svc.ListCommits(r.Context(), userID, repoID, limit)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list commits", reqID)
@@ -161,6 +165,8 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 		req = dto.FetchCommitsRequest{}
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
+
 	if WantsSSE(r) {
 		svcProgress := make(chan dto.ProgressEvent, 10)
 		clientProgress := make(chan dto.ProgressEvent, 10)
@@ -172,7 +178,7 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				result, fetchErr = h.svc.FetchCommits(r.Context(), repoID, req.Limit, req.Since, svcProgress)
+				result, fetchErr = h.svc.FetchCommits(r.Context(), userID, repoID, req.Limit, req.Since, svcProgress)
 			}()
 
 			// Forward service events to the client in real-time
@@ -209,7 +215,7 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
 		go func() {
-			result, err := h.svc.FetchCommits(context.Background(), repoID, req.Limit, req.Since, progress)
+			result, err := h.svc.FetchCommits(context.Background(), userID, repoID, req.Limit, req.Since, progress)
 			if err != nil {
 				h.opStore.Fail(opID, err.Error())
 				return
@@ -246,6 +252,8 @@ func (h *RepoHandler) GeneratePosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := middleware.UserIDFromContext(r.Context())
+
 	if WantsSSE(r) {
 		svcProgress := make(chan dto.ProgressEvent, 10)
 		clientProgress := make(chan dto.ProgressEvent, 10)
@@ -257,7 +265,7 @@ func (h *RepoHandler) GeneratePosts(w http.ResponseWriter, r *http.Request) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				result, genErr = h.svc.GenerateFromCommits(r.Context(), req, svcProgress)
+				result, genErr = h.svc.GenerateFromCommits(r.Context(), userID, req, svcProgress)
 			}()
 
 			for evt := range svcProgress {
@@ -293,7 +301,7 @@ func (h *RepoHandler) GeneratePosts(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
 		go func() {
-			result, err := h.svc.GenerateFromCommits(context.Background(), req, progress)
+			result, err := h.svc.GenerateFromCommits(context.Background(), userID, req, progress)
 			if err != nil {
 				h.opStore.Fail(opID, err.Error())
 				return
@@ -316,6 +324,7 @@ func (h *RepoHandler) GeneratePosts(w http.ResponseWriter, r *http.Request) {
 
 // RenderCodeImage renders a code diff image for a commit and returns PNG bytes.
 func (h *RepoHandler) RenderCodeImage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	var req dto.RenderCodeImageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
@@ -329,7 +338,7 @@ func (h *RepoHandler) RenderCodeImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), req.CommitID, req.Template, req.Theme)
+	pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), userID, req.CommitID, req.Template, req.Theme)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -343,6 +352,7 @@ func (h *RepoHandler) RenderCodeImage(w http.ResponseWriter, r *http.Request) {
 
 // GetCodeImage serves a pre-rendered PNG code diff image for a commit.
 func (h *RepoHandler) GetCodeImage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	commitIDStr := chi.URLParam(r, "commitId")
 	commitID, err := strconv.ParseInt(commitIDStr, 10, 64)
 	if err != nil {
@@ -351,7 +361,7 @@ func (h *RepoHandler) GetCodeImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), commitID, "", "")
+	pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), userID, commitID, "", "")
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		if strings.Contains(err.Error(), "no diff") || strings.Contains(err.Error(), "not found") {
@@ -372,6 +382,7 @@ func (h *RepoHandler) GetCodeImage(w http.ResponseWriter, r *http.Request) {
 // generated content item. Falls back to commit-level heuristic rendering
 // if no content-specific image exists.
 func (h *RepoHandler) GetContentCodeImage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	contentIDStr := chi.URLParam(r, "contentId")
 	contentID, err := strconv.ParseInt(contentIDStr, 10, 64)
 	if err != nil {
@@ -380,7 +391,7 @@ func (h *RepoHandler) GetContentCodeImage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	gc, err := h.svc.GetContentByID(r.Context(), contentID)
+	gc, err := h.svc.GetContentByID(r.Context(), userID, contentID)
 	if err != nil || gc == nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusNotFound, dto.ErrCodeNotFound, "content not found", reqID)
@@ -390,7 +401,7 @@ func (h *RepoHandler) GetContentCodeImage(w http.ResponseWriter, r *http.Request
 	if gc.CodeImagePath == "" {
 		// No saved image — try rendering from commit heuristic as fallback
 		if gc.SourceCommitID > 0 {
-			pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), gc.SourceCommitID, "", "")
+			pngBytes, _, err := h.svc.RenderCodeImage(r.Context(), userID, gc.SourceCommitID, "", "")
 			if err != nil {
 				reqID := middleware.RequestIDFromContext(r.Context())
 				middleware.WriteError(w, http.StatusNotFound, dto.ErrCodeNotFound, "no code image available", reqID)
@@ -412,6 +423,7 @@ func (h *RepoHandler) GetContentCodeImage(w http.ResponseWriter, r *http.Request
 
 // UpdateSettings updates the target audience and links for a repo.
 func (h *RepoHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -432,7 +444,7 @@ func (h *RepoHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		links[i] = models.RepoLink{Label: l.Label, URL: l.URL}
 	}
 
-	repo, err := h.svc.UpdateRepoSettings(r.Context(), id, req.TargetAudience, links)
+	repo, err := h.svc.UpdateRepoSettings(r.Context(), userID, id, req.TargetAudience, links)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -520,6 +532,7 @@ func (h *RepoHandler) ListCodeImagePreviews(w http.ResponseWriter, r *http.Reque
 // ReRenderContentCodeImage re-renders the code image for a content item using
 // its current code_image_description, then returns the updated content response.
 func (h *RepoHandler) ReRenderContentCodeImage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	contentIDStr := chi.URLParam(r, "contentId")
 	contentID, err := strconv.ParseInt(contentIDStr, 10, 64)
 	if err != nil {
@@ -528,7 +541,7 @@ func (h *RepoHandler) ReRenderContentCodeImage(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	newPath, err := h.svc.ReRenderCodeImage(r.Context(), contentID)
+	newPath, err := h.svc.ReRenderCodeImage(r.Context(), userID, contentID)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		if strings.Contains(err.Error(), "not found") {
@@ -540,7 +553,7 @@ func (h *RepoHandler) ReRenderContentCodeImage(w http.ResponseWriter, r *http.Re
 	}
 
 	// Update the code_image_path in the DB if it changed
-	gc, err := h.svc.GetContentByID(r.Context(), contentID)
+	gc, err := h.svc.GetContentByID(r.Context(), userID, contentID)
 	if err != nil || gc == nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to reload content", reqID)

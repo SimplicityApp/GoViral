@@ -23,11 +23,12 @@ func NewHistoryHandler(database *db.DB) *HistoryHandler {
 
 // List returns generated content with optional status filter.
 func (h *HistoryHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	status := r.URL.Query().Get("status")
 	platform := r.URL.Query().Get("platform")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	contents, err := h.db.GetGeneratedContent(status, platform, limit)
+	contents, err := h.db.GetGeneratedContent(userID, status, platform, limit)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list history", reqID)
@@ -44,6 +45,7 @@ func (h *HistoryHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // GetByID returns a single generated content record.
 func (h *HistoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -52,7 +54,7 @@ func (h *HistoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gc, err := h.db.GetGeneratedContentByID(id)
+	gc, err := h.db.GetGeneratedContentByID(userID, id)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to get content", reqID)
@@ -69,6 +71,7 @@ func (h *HistoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // GetContentImage serves the AI-generated image for a generated content item.
 func (h *HistoryHandler) GetContentImage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -77,7 +80,7 @@ func (h *HistoryHandler) GetContentImage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	gc, err := h.db.GetGeneratedContentByID(id)
+	gc, err := h.db.GetGeneratedContentByID(userID, id)
 	if err != nil || gc == nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusNotFound, dto.ErrCodeNotFound, "content not found", reqID)

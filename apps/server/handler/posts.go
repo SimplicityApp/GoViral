@@ -21,10 +21,11 @@ func NewPostsHandler(svc *service.PostsService) *PostsHandler {
 
 // List returns posts filtered by query parameters.
 func (h *PostsHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
 	platform := r.URL.Query().Get("platform")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	posts, err := h.svc.List(platform, limit)
+	posts, err := h.svc.List(userID, platform, limit)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, "failed to list posts", reqID)
