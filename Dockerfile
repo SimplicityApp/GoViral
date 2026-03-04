@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
+# Pre-install playwright (uses system Chromium, no extra browser download)
+RUN pip install --no-cache-dir playwright linkitin
+
 # Create non-root user (entrypoint handles the user switch)
 RUN useradd -m -s /bin/bash goviral
 

@@ -52,13 +52,135 @@ ensure_package("linkitin")
 import asyncio
 import base64
 
-# On non-macOS platforms, disable Chrome data extraction (requires osascript).
-# Monkey-patch before importing LinkitinClient so it falls back to the REST API.
+# ---------------------------------------------------------------------------
+# Headless Chromium support for non-macOS (Linux servers).
+#
+# linkitin's chrome_data module uses osascript (macOS AppleScript) to execute
+# JavaScript inside a Chrome tab on linkedin.com. On Linux we replace this
+# with headless Chromium via Playwright, providing the same interface.
+# ---------------------------------------------------------------------------
+
+_headless_page = None  # Playwright Page, lazily initialized
+_headless_pw = None    # Playwright instance
+_headless_browser = None
+
+
+def _setup_headless_chrome(li_at, jsessionid):
+    """Launch headless Chromium and navigate to LinkedIn with cookies."""
+    global _headless_page, _headless_pw, _headless_browser
+
+    if _headless_page is not None:
+        return
+
+    ensure_package("playwright")
+    from playwright.sync_api import sync_playwright
+
+    chromium_path = os.environ.get("CHROMIUM_PATH")
+    if not chromium_path:
+        # Common paths on Linux
+        for p in ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]:
+            if os.path.exists(p):
+                chromium_path = p
+                break
+
+    if not chromium_path:
+        print("[goviral] no Chromium found, headless mode unavailable", file=sys.stderr)
+        return
+
+    print(f"[goviral] launching headless Chromium ({chromium_path})...", file=sys.stderr)
+    _headless_pw = sync_playwright().start()
+    _headless_browser = _headless_pw.chromium.launch(
+        executable_path=chromium_path,
+        headless=True,
+        args=[
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--disable-software-rasterizer",
+        ],
+    )
+    context = _headless_browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        viewport={"width": 1920, "height": 1080},
+    )
+
+    # Strip quotes from JSESSIONID if present (LinkedIn stores it as "ajax:...")
+    clean_jsessionid = jsessionid.strip('"')
+
+    context.add_cookies([
+        {
+            "name": "li_at",
+            "value": li_at,
+            "domain": ".linkedin.com",
+            "path": "/",
+            "httpOnly": True,
+            "secure": True,
+        },
+        {
+            "name": "JSESSIONID",
+            "value": f'"{clean_jsessionid}"',
+            "domain": ".linkedin.com",
+            "path": "/",
+            "secure": True,
+        },
+    ])
+
+    page = context.new_page()
+    page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
+    _headless_page = page
+    print("[goviral] headless Chromium ready", file=sys.stderr)
+
+    import atexit
+    atexit.register(_cleanup_headless)
+
+
+def _cleanup_headless():
+    global _headless_page, _headless_browser, _headless_pw
+    try:
+        if _headless_browser:
+            _headless_browser.close()
+        if _headless_pw:
+            _headless_pw.stop()
+    except Exception:
+        pass
+    _headless_page = None
+    _headless_browser = None
+    _headless_pw = None
+
+
+def _headless_find_and_exec(js_code):
+    """Execute JS in headless LinkedIn page (drop-in for osascript version)."""
+    if _headless_page is None:
+        from linkitin.exceptions import AuthError
+        raise AuthError("headless browser not initialized")
+    try:
+        result = _headless_page.evaluate(js_code)
+        return str(result) if result is not None else ""
+    except Exception as e:
+        err = str(e)
+        # Navigation-triggering JS (window.location.href = ...) may cause
+        # Playwright to report an error. Wait for the new page and return.
+        if "navigation" in err.lower() or "context was destroyed" in err.lower():
+            try:
+                _headless_page.wait_for_load_state("domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+            return ""
+        raise
+
+
 if sys.platform != "darwin":
-    import linkitin.feed as _lf
-    async def _chrome_extract_noop(session, source, **kwargs):
-        return None
-    _lf._chrome_extract = _chrome_extract_noop
+    # Monkey-patch linkitin's osascript-based functions to use headless Chromium.
+    import linkitin.chrome_data as _cd
+    _cd._find_linkedin_tab_and_exec = _headless_find_and_exec
+
+    import linkitin.chrome_proxy as _cp
+    _cp._find_linkedin_tab_and_exec = _headless_find_and_exec
+
 
 from linkitin import LinkitinClient
 
@@ -72,6 +194,9 @@ async def handle_command(client, cmd):
         if not li_at or not jsessionid:
             return {"error": "login requires li_at and jsessionid"}
         await client.login_with_cookies(li_at, jsessionid)
+        # Initialize headless browser with new cookies.
+        if sys.platform != "darwin":
+            _setup_headless_chrome(li_at, jsessionid)
         return {"status": "ok"}
 
     elif action == "login_browser":
@@ -206,7 +331,8 @@ async def handle_command(client, cmd):
 
 
 async def main():
-    client = LinkitinClient(cookies_path=os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json"))
+    cookies_path = os.path.join(_GOVIRAL_DIR, "linkitin_cookies.json")
+    client = LinkitinClient(cookies_path=cookies_path)
 
     # Try to load saved cookies on startup.
     loaded = False
@@ -214,6 +340,25 @@ async def main():
         loaded = await client.login_from_saved()
     except Exception:
         pass
+
+    if loaded and sys.platform != "darwin":
+        # Initialize headless Chromium with the saved cookies.
+        li_at = getattr(client.session, "_li_at", None)
+        jsessionid = getattr(client.session, "_jsessionid", None)
+        if not li_at or not jsessionid:
+            # Read cookies from the file directly as fallback.
+            try:
+                with open(cookies_path) as f:
+                    cdata = json.load(f)
+                li_at = cdata.get("li_at", "")
+                jsessionid = cdata.get("jsessionid", cdata.get("JSESSIONID", ""))
+            except Exception:
+                pass
+        if li_at and jsessionid:
+            try:
+                _setup_headless_chrome(li_at, jsessionid)
+            except Exception as e:
+                print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
 
     if not loaded and os.path.exists(_CHROME_PROXY_MARKER):
         if sys.platform != "darwin":
@@ -247,6 +392,7 @@ async def main():
         print(json.dumps(result), flush=True)
 
     await client.close()
+    _cleanup_headless()
 
 
 if __name__ == "__main__":

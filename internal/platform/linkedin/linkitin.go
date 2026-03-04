@@ -569,7 +569,7 @@ func (c *LinkitinClient) runCommand(ctx context.Context, cmd linkitinCommand) (m
 	// Append newline so the bridge reads the line.
 	cmdJSON = append(cmdJSON, '\n')
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
