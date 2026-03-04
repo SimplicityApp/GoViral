@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 const userIDKey contextKey = "user_id"
@@ -21,6 +22,12 @@ func UserIDFromContext(ctx context.Context) string {
 func UserID(getOrCreate func(string) error) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip user ID validation for health and OAuth endpoints
+			if r.URL.Path == "/api/v1/health" || strings.HasPrefix(r.URL.Path, "/api/v1/oauth/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			uid := r.Header.Get("X-User-ID")
 			if uid == "" || !uuidV4Re.MatchString(uid) {
 				reqID := RequestIDFromContext(r.Context())
