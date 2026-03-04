@@ -369,7 +369,7 @@ func (db *DB) UpsertPost(userID string, p *models.Post) error {
 // GetPostsByPlatform returns all posts for a given platform and user.
 func (db *DB) GetPostsByPlatform(userID string, platform string) ([]models.Post, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? AND platform = ? ORDER BY posted_at DESC",
+		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? AND platform = ? ORDER BY CASE WHEN posted_at > '2000-01-01' THEN posted_at ELSE fetched_at END DESC",
 		userID, platform,
 	)
 	if err != nil {
@@ -382,7 +382,7 @@ func (db *DB) GetPostsByPlatform(userID string, platform string) ([]models.Post,
 // GetAllPosts returns all posts across platforms for a user.
 func (db *DB) GetAllPosts(userID string) ([]models.Post, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? ORDER BY posted_at DESC",
+		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? ORDER BY CASE WHEN posted_at > '2000-01-01' THEN posted_at ELSE fetched_at END DESC",
 		userID,
 	)
 	if err != nil {

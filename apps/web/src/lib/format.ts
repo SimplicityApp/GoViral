@@ -5,7 +5,9 @@ export function formatCount(n: number): string {
 }
 
 export function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return ''
   const date = new Date(dateStr)
+  if (isNaN(date.getTime()) || date.getFullYear() < 2000) return ''
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffSec = Math.floor(diffMs / 1000)
