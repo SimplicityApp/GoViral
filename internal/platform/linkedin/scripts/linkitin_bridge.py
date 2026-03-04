@@ -131,13 +131,12 @@ def _setup_headless_chrome(li_at, jsessionid):
             "value": f'"{clean_jsessionid}"',
             "domain": ".linkedin.com",
             "path": "/",
+            "httpOnly": False,
             "secure": True,
         },
     ])
 
-    page = context.new_page()
-    page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
-    _headless_page = page
+    _headless_page = context.new_page()
     print("[goviral] headless Chromium ready", file=sys.stderr)
 
     import atexit
@@ -349,7 +348,12 @@ def _init_headless_from_cookies():
         li_at = cdata.get("li_at", "")
         jsessionid = cdata.get("JSESSIONID", "")
         if li_at and jsessionid:
-            _setup_headless_chrome(li_at, jsessionid)
+            try:
+                _setup_headless_chrome(li_at, jsessionid)
+            except Exception as e:
+                _headless_setup_error = f"setup failed: {e}"
+                print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
+                _cleanup_headless()
         else:
             _headless_setup_error = "no LinkedIn cookies found in file"
             print("[goviral] no LinkedIn cookies found, skipping headless Chrome", file=sys.stderr)
