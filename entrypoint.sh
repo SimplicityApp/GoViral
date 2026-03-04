@@ -24,9 +24,15 @@ if [ ! -f /home/goviral/.goviral/venv/bin/python3 ]; then
   echo "First boot: creating Python venv and installing packages..."
   gosu goviral sh -c '
     python3 -m venv /home/goviral/.goviral/venv
-    /home/goviral/.goviral/venv/bin/pip install -q twikit linkitin
+    /home/goviral/.goviral/venv/bin/pip install -q twikit linkitin playwright
   '
   echo "Python setup complete."
+else
+  # Ensure playwright is installed in existing venvs (added post-deploy).
+  gosu goviral sh -c '
+    /home/goviral/.goviral/venv/bin/python3 -c "import playwright" 2>/dev/null || \
+    /home/goviral/.goviral/venv/bin/pip install -q playwright
+  '
 fi
 
 # gosu replaces the current process (no fork), so the Go binary becomes PID 1

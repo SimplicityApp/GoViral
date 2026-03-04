@@ -48,6 +48,10 @@ def ensure_package(package_name, pip_name=None):
 # Ensure linkitin is available (installed from PyPI).
 ensure_package("linkitin")
 
+# On non-macOS, ensure playwright is available for headless Chrome.
+if sys.platform != "darwin":
+    ensure_package("playwright")
+
 
 import asyncio
 import base64
@@ -63,11 +67,12 @@ import base64
 _headless_page = None  # Playwright Page, lazily initialized
 _headless_pw = None    # Playwright instance
 _headless_browser = None
+_headless_setup_error = None  # Stored error from setup for better diagnostics
 
 
 def _setup_headless_chrome(li_at, jsessionid):
     """Launch headless Chromium and navigate to LinkedIn with cookies."""
-    global _headless_page, _headless_pw, _headless_browser
+    global _headless_page, _headless_pw, _headless_browser, _headless_setup_error
 
     if _headless_page is not None:
         return
@@ -84,6 +89,7 @@ def _setup_headless_chrome(li_at, jsessionid):
                 break
 
     if not chromium_path:
+        _headless_setup_error = "no Chromium binary found"
         print("[goviral] no Chromium found, headless mode unavailable", file=sys.stderr)
         return
 
@@ -156,7 +162,8 @@ def _headless_find_and_exec(js_code):
     """Execute JS in headless LinkedIn page (drop-in for osascript version)."""
     if _headless_page is None:
         from linkitin.exceptions import AuthError
-        raise AuthError("headless browser not initialized")
+        detail = f": {_headless_setup_error}" if _headless_setup_error else ""
+        raise AuthError(f"headless browser not initialized{detail}")
     try:
         result = _headless_page.evaluate(js_code)
         return str(result) if result is not None else ""
@@ -359,8 +366,10 @@ async def main():
             try:
                 _setup_headless_chrome(li_at, jsessionid)
             except Exception as e:
+                _headless_setup_error = f"setup failed: {e}"
                 print(f"[goviral] headless Chrome setup failed: {e}", file=sys.stderr)
         else:
+            _headless_setup_error = "no LinkedIn cookies found"
             print("[goviral] no LinkedIn cookies found, skipping headless Chrome", file=sys.stderr)
     else:
         # On macOS: use normal login flow (validates via REST or Chrome proxy).
