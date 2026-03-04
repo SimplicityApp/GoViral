@@ -10,10 +10,26 @@ function goviralGetCsrfToken() {
 
 function goviralLinkedInHeaders() {
   const token = goviralGetCsrfToken();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+  const offsetHours = -(new Date().getTimezoneOffset() / 60);
   return {
     "csrf-token": token || "",
     accept: "application/vnd.linkedin.normalized+json+2.1",
     "x-restli-protocol-version": "2.0.0",
+    "x-li-lang": "en_US",
+    "x-li-track": JSON.stringify({
+      clientVersion: "1.13.8735",
+      mpVersion: "1.13.8735",
+      osName: "web",
+      timezoneOffset: offsetHours,
+      timezone: tz,
+      deviceFormFactor: "DESKTOP",
+      mpName: "voyager-web",
+      displayDensity: window.devicePixelRatio || 2,
+      displayWidth: window.screen.width || 1920,
+      displayHeight: window.screen.height || 1080,
+    }),
+    "Accept-Language": "en-US,en;q=0.9",
   };
 }
 
