@@ -39,6 +39,7 @@ export function Trending() {
       period,
       min_likes: minLikes ? Number(minLikes) : undefined,
       niche: niche || undefined,
+      niches: niche ? [niche] : platformNiches,
     })
   }
 

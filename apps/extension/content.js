@@ -93,6 +93,8 @@ window.addEventListener("message", (event) => {
     chrome.runtime.sendMessage(
       {
         type: "GOVIRAL_LINKEDIN_FETCH_TRENDING",
+        niches: event.data.niches,
+        period: event.data.period,
         keywords: event.data.keywords,
         count: event.data.count,
       },

@@ -19,7 +19,7 @@ export function useExtensionLinkedIn() {
       const timeout = setTimeout(() => {
         window.removeEventListener('message', handler)
         reject(new Error('Extension request timed out'))
-      }, 60000) // 60s timeout for scraping
+      }, 120000) // 120s timeout for multi-niche scraping
 
       function handler(event: MessageEvent) {
         if (event.origin !== window.location.origin) return
@@ -99,12 +99,12 @@ export function useExtensionLinkedIn() {
     }
   }, [])
 
-  const fetchTrending = useCallback(async (keywords: string, limit = 20) => {
+  const fetchTrending = useCallback(async (niches: string[], period = '24h', limit = 20) => {
     setIsRunning(true)
     setError(null)
     setProgress('Discovering trending LinkedIn posts...')
     try {
-      const result = await sendExtensionMessage('GOVIRAL_LINKEDIN_FETCH_TRENDING', { keywords, count: limit })
+      const result = await sendExtensionMessage('GOVIRAL_LINKEDIN_FETCH_TRENDING', { niches, period, count: limit })
       if (result.posts?.length) {
         setProgress('Saving trending posts...')
         await apiClient.post('/trending/ingest', { platform: 'linkedin', posts: result.posts })

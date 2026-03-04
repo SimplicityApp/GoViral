@@ -204,24 +204,276 @@ window.goviralParseNormalizedPosts = function (data, limit) {
   return posts;
 };
 
+// --- DOM extraction (adapted from linkitin/chrome_data.py) ---
+
+window.goviralExtractCodeEntities = function () {
+  // Extract Voyager entities from <code id="bpr-guid-*"> elements that
+  // LinkedIn server-renders into the page HTML.
+  var codes = document.querySelectorAll('code[id^="bpr-guid-"]');
+  var entities = [];
+  for (var i = 0; i < codes.length; i++) {
+    try {
+      var d = JSON.parse(codes[i].textContent);
+      if (d.included) {
+        for (var j = 0; j < d.included.length; j++) {
+          entities.push(d.included[j]);
+        }
+      }
+    } catch (e) { /* skip non-JSON code elements */ }
+  }
+  return entities;
+};
+
+window.goviralExtractSearchPostsDOM = function (count) {
+  // Extract posts from search/feed pages using the "Reaction button" anchor.
+  // Adapted from linkitin/chrome_data.py _JS_EXTRACT_POSTS_FROM_DOM.
+  var reactionBtns = document.querySelectorAll(
+    'button[aria-label="Reaction button state: no reaction"]'
+  );
+  var results = [];
+  var seen = {};
+
+  for (var i = 0; i < reactionBtns.length; i++) {
+    var btn = reactionBtns[i];
+
+    // Walk up to card container, collecting data-urn along the way.
+    var card = btn;
+    var postUrn = "";
+    for (var j = 0; j < 20; j++) {
+      card = card.parentElement;
+      if (!card) break;
+      var dataUrn = ((card.getAttribute && card.getAttribute("data-urn")) || "").replace(/[/]+$/, "");
+      if (!postUrn && dataUrn &&
+          (dataUrn.indexOf("activity") >= 0 || dataUrn.indexOf("ugcPost") >= 0 ||
+           dataUrn.indexOf("fsd_update") >= 0)) {
+        postUrn = dataUrn;
+      }
+      if ((card.textContent || "").length > 300) break;
+    }
+    if (!card) continue;
+
+    // Second pass: look for /feed/update/ or /posts/ links inside the card.
+    if (!postUrn) {
+      var links = card.querySelectorAll("a[href]");
+      for (var l = 0; l < links.length; l++) {
+        var href = links[l].getAttribute("href") || "";
+        var hrefDecoded = href;
+        try { hrefDecoded = decodeURIComponent(href); } catch(e) {}
+
+        if (href.indexOf("/feed/update/") >= 0) {
+          var hm = hrefDecoded.match(/(urn:li:[a-zA-Z0-9_]+:[^?&# ]+)/);
+          if (hm) {
+            var cUrn = hm[1];
+            if (cUrn.indexOf("activity") >= 0 || cUrn.indexOf("ugcPost") >= 0 ||
+                cUrn.indexOf("fsd_update") >= 0) {
+              postUrn = cUrn;
+              break;
+            }
+          }
+        } else if (href.indexOf("/posts/") >= 0) {
+          var am = hrefDecoded.match(/[^a-zA-Z]activity([0-9]{15,})/);
+          if (am) {
+            postUrn = "urn:li:activity:" + am[1];
+            break;
+          }
+        }
+      }
+    }
+
+    if (!postUrn) continue;  // skip posts where we couldn't extract a URN
+
+    var fullText = (card.textContent || "").replace(/\s+/g, " ").trim();
+
+    // Extract author name.
+    var authorName = "";
+    var m = fullText.match(/Feed post\s*(.+?)\s*[·•]\s*Following/);
+    if (m) {
+      authorName = m[1].trim();
+    } else {
+      var followBtn = card.querySelector('button[aria-label^="Follow "]');
+      if (followBtn) {
+        authorName = (followBtn.getAttribute("aria-label") || "").replace("Follow ", "").trim();
+      }
+    }
+
+    if (!authorName || seen[authorName]) continue;
+    seen[authorName] = true;
+
+    // Extract post text after time marker.
+    var postText = "";
+    var tm = fullText.match(/\d+[dhwmo]\s*[·•]?\s*/);
+    if (tm) {
+      postText = fullText.substring(fullText.indexOf(tm[0]) + tm[0].length).trim();
+    } else {
+      var fi = fullText.indexOf("Following");
+      if (fi < 0) fi = fullText.indexOf("Follow");
+      if (fi >= 0) {
+        postText = fullText.substring(fi + 9).trim();
+      }
+    }
+
+    // Remove engagement + action buttons from end.
+    postText = postText.replace(/\d[\d,]*\s*(reaction|comment|repost).*$/i, "").trim();
+    postText = postText.replace(/Like\s*(Comment|Repost|Send|Share|Celebrate|Support|Love|Insightful|Funny).*$/i, "").trim();
+    postText = postText.replace(/[…\.]{1,3}\s*more\s*$/i, "").trim();
+
+    if (postText.length < 10) continue;
+
+    // Extract engagement metrics.
+    var spans = card.querySelectorAll("span");
+    var likes = 0, comments = 0, reposts = 0;
+    for (var s = 0; s < spans.length; s++) {
+      var t = spans[s].textContent.trim();
+      var em;
+      if ((em = t.match(/^([\d,]+)\s*reaction/i))) {
+        likes = parseInt(em[1].replace(/,/g, ""), 10) || 0;
+      } else if ((em = t.match(/^([\d,]+)\s*comment/i))) {
+        comments = parseInt(em[1].replace(/,/g, ""), 10) || 0;
+      } else if ((em = t.match(/^([\d,]+)\s*repost/i))) {
+        reposts = parseInt(em[1].replace(/,/g, ""), 10) || 0;
+      }
+    }
+
+    var activityMatch = postUrn.match(/activity:(\d+)/);
+    var platform_post_id = activityMatch ? activityMatch[1] : postUrn;
+
+    results.push({
+      platform_post_id: platform_post_id,
+      content: postText.substring(0, 2000),
+      likes: likes,
+      comments: comments,
+      reposts: reposts,
+      impressions: 0,
+      posted_at: null,
+      author_name: authorName,
+      author_username: null,
+      niche_tags: [],
+    });
+
+    if (count && results.length >= count) break;
+  }
+  return results;
+};
+
+window.goviralExtractActivityPostsDOM = function (count) {
+  // Fallback: scrape [data-urn] elements on the activity page.
+  // Adapted from linkitin/chrome_data.py _JS_EXTRACT_ACTIVITY_POSTS.
+
+  // First, click all "…more" buttons to reveal full text.
+  var moreButtons = document.querySelectorAll("button.see-more");
+  for (var b = 0; b < moreButtons.length; b++) moreButtons[b].click();
+
+  var postElements = document.querySelectorAll("[data-urn]");
+  var results = [];
+  for (var i = 0; i < postElements.length; i++) {
+    var el = postElements[i];
+    var urn = el.getAttribute("data-urn") || "";
+    if (urn.indexOf("activity") < 0) continue;
+
+    var textEl = el.querySelector(
+      ".update-components-text, .feed-shared-inline-show-more-text"
+    );
+    var text = textEl ? textEl.textContent.trim() : "";
+    if (!text) continue;
+    // Strip residual "…more" / "Show less" button text.
+    text = text.replace(/\u2026more\s*$/g, "").replace(/Show less\s*$/g, "").trim();
+
+    var likes = 0, comments = 0, reposts = 0;
+    var countSpans = el.querySelectorAll(
+      ".social-details-social-counts span[aria-hidden='true']"
+    );
+    for (var s = 0; s < countSpans.length; s++) {
+      var t = countSpans[s].textContent.trim();
+      var m;
+      if ((m = t.match(/^([\d,]+)\s*comment/i))) {
+        comments = parseInt(m[1].replace(/,/g, ""), 10);
+      } else if ((m = t.match(/^([\d,]+)\s*repost/i))) {
+        reposts = parseInt(m[1].replace(/,/g, ""), 10);
+      } else if ((m = t.match(/^([\d,]+)$/))) {
+        likes = parseInt(m[1].replace(/,/g, ""), 10);
+      }
+    }
+    if (likes === 0) {
+      var reactBtn = el.querySelector(
+        "button.social-details-social-counts__reactions-count"
+      );
+      if (reactBtn) {
+        var rm = reactBtn.textContent.trim().match(/([\d,]+)/);
+        if (rm) likes = parseInt(rm[1].replace(/,/g, ""), 10);
+      }
+    }
+
+    var activityMatch = urn.match(/activity:(\d+)/);
+    var platform_post_id = activityMatch ? activityMatch[1] : urn;
+
+    results.push({
+      platform_post_id: platform_post_id,
+      content: text.substring(0, 2000),
+      likes: likes,
+      comments: comments,
+      reposts: reposts,
+      impressions: 0,
+      posted_at: null,
+      author_name: null,
+      author_username: null,
+      niche_tags: [],
+    });
+
+    if (count && results.length >= count) break;
+  }
+  return results;
+};
+
 // --- API functions ---
 
 window.goviralFetchMyPosts = async function (count) {
   count = count || 20;
+
+  // 1. Try <code> entity extraction (works when page has server-rendered data).
+  try {
+    var codeEntities = window.goviralExtractCodeEntities();
+    var hasUpdates = codeEntities.some(function (e) {
+      return (e.$type || "").indexOf("Update") !== -1;
+    });
+    if (hasUpdates) {
+      var posts = window.goviralParseNormalizedPosts({ included: codeEntities }, count);
+      if (posts.length > 0) return { posts: posts };
+    }
+  } catch (e) { /* fall through */ }
+
+  // 2. Try [data-urn] DOM extraction (activity page with client-rendered posts).
+  try {
+    var domPosts = window.goviralExtractActivityPostsDOM(count);
+    if (domPosts.length > 0) return { posts: domPosts };
+  } catch (e) { /* fall through */ }
+
+  // 3. Fall back to REST API with pagination (kept as last resort).
   try {
     var headers = window.goviralLinkedInHeaders();
-    var url =
-      "/voyager/api/identity/profileUpdatesV2" +
-      "?q=memberShareFeed&moduleKey=member-shares:phone" +
-      "&count=" + Math.min(count, 50) + "&start=0";
+    var allPosts = [];
+    var pageSize = Math.min(count, 50);
+    var start = 0;
+    var maxPages = Math.ceil(count / pageSize);
+    for (var page = 0; page < maxPages; page++) {
+      var url =
+        "/voyager/api/identity/profileUpdatesV2" +
+        "?q=memberShareFeed&moduleKey=member-shares:phone" +
+        "&count=" + pageSize + "&start=" + start;
 
-    var resp = await fetch(url, { credentials: "include", headers: headers });
-    if (!resp.ok) {
-      var body = await resp.text().catch(function () { return ""; });
-      return { error: "Failed to fetch my posts: " + resp.status + " " + body.slice(0, 300) };
+      var resp = await fetch(url, { credentials: "include", headers: headers });
+      if (!resp.ok) {
+        if (allPosts.length > 0) break;
+        var body = await resp.text().catch(function () { return ""; });
+        return { error: "Failed to fetch my posts: " + resp.status + " " + body.slice(0, 300) };
+      }
+      var data = await resp.json();
+      var pagePosts = window.goviralParseNormalizedPosts(data, 0);
+      if (pagePosts.length === 0) break;
+      for (var pi = 0; pi < pagePosts.length; pi++) allPosts.push(pagePosts[pi]);
+      if (allPosts.length >= count) break;
+      start += pageSize;
     }
-    var data = await resp.json();
-    return { posts: window.goviralParseNormalizedPosts(data, count) };
+    return { posts: allPosts.slice(0, count) };
   } catch (err) {
     return { error: String(err) };
   }
@@ -229,19 +481,51 @@ window.goviralFetchMyPosts = async function (count) {
 
 window.goviralFetchFeed = async function (count) {
   count = count || 20;
+
+  // 1. Try <code> entity extraction.
+  try {
+    var codeEntities = window.goviralExtractCodeEntities();
+    var hasUpdates = codeEntities.some(function (e) {
+      return (e.$type || "").indexOf("Update") !== -1;
+    });
+    if (hasUpdates) {
+      var posts = window.goviralParseNormalizedPosts({ included: codeEntities }, count);
+      if (posts.length > 0) return { posts: posts };
+    }
+  } catch (e) { /* fall through */ }
+
+  // 2. Try reaction-button DOM extraction.
+  try {
+    var domPosts = window.goviralExtractSearchPostsDOM(count);
+    if (domPosts.length > 0) return { posts: domPosts };
+  } catch (e) { /* fall through */ }
+
+  // 3. Fall back to REST API with pagination.
   try {
     var headers = window.goviralLinkedInHeaders();
-    var url =
-      "/voyager/api/feed/dash/feedUpdates" +
-      "?q=DECORATED_FEED&count=" + Math.min(count, 50) + "&start=0";
+    var allPosts = [];
+    var pageSize = Math.min(count, 50);
+    var start = 0;
+    var maxPages = Math.ceil(count / pageSize);
+    for (var page = 0; page < maxPages; page++) {
+      var url =
+        "/voyager/api/feed/dash/feedUpdates" +
+        "?q=DECORATED_FEED&count=" + pageSize + "&start=" + start;
 
-    var resp = await fetch(url, { credentials: "include", headers: headers });
-    if (!resp.ok) {
-      var body = await resp.text().catch(function () { return ""; });
-      return { error: "Failed to fetch feed: " + resp.status + " " + body.slice(0, 300) };
+      var resp = await fetch(url, { credentials: "include", headers: headers });
+      if (!resp.ok) {
+        if (allPosts.length > 0) break;
+        var body = await resp.text().catch(function () { return ""; });
+        return { error: "Failed to fetch feed: " + resp.status + " " + body.slice(0, 300) };
+      }
+      var data = await resp.json();
+      var pagePosts = window.goviralParseNormalizedPosts(data, 0);
+      if (pagePosts.length === 0) break;
+      for (var pi = 0; pi < pagePosts.length; pi++) allPosts.push(pagePosts[pi]);
+      if (allPosts.length >= count) break;
+      start += pageSize;
     }
-    var data = await resp.json();
-    return { posts: window.goviralParseNormalizedPosts(data, count) };
+    return { posts: allPosts.slice(0, count) };
   } catch (err) {
     return { error: String(err) };
   }
@@ -249,49 +533,117 @@ window.goviralFetchFeed = async function (count) {
 
 window.goviralSearchPosts = async function (keywords, count) {
   count = count || 20;
+
+  // 1. Try <code> entity extraction.
+  try {
+    var codeEntities = window.goviralExtractCodeEntities();
+    var hasUpdates = codeEntities.some(function (e) {
+      return (e.$type || "").indexOf("Update") !== -1;
+    });
+    if (hasUpdates) {
+      var posts = window.goviralParseNormalizedPosts({ included: codeEntities }, count);
+      if (posts.length > 0) return { posts: posts };
+    }
+  } catch (e) { /* fall through */ }
+
+  // 2. Try reaction-button DOM extraction.
+  try {
+    var domPosts = window.goviralExtractSearchPostsDOM(count);
+    if (domPosts.length > 0) return { posts: domPosts };
+  } catch (e) { /* fall through */ }
+
+  // 3. Fall back to REST API with pagination.
   try {
     var headers = window.goviralLinkedInHeaders();
-    var url =
-      "/voyager/api/search/dash/clusters" +
-      "?q=all&keywords=" + encodeURIComponent(keywords) +
-      "&type=CONTENT&count=" + count;
+    var allPosts = [];
+    var pageSize = Math.min(count, 50);
+    var start = 0;
+    var maxPages = Math.ceil(count / pageSize);
+    for (var page = 0; page < maxPages; page++) {
+      var url =
+        "/voyager/api/search/dash/clusters" +
+        "?q=all&keywords=" + encodeURIComponent(keywords) +
+        "&type=CONTENT&count=" + pageSize + "&start=" + start;
 
-    var resp = await fetch(url, { credentials: "include", headers: headers });
-    if (!resp.ok) {
-      var body = await resp.text().catch(function () { return ""; });
-      return { error: "Failed to search posts: " + resp.status + " " + body.slice(0, 300) };
+      var resp = await fetch(url, { credentials: "include", headers: headers });
+      if (!resp.ok) {
+        if (allPosts.length > 0) break;
+        var body = await resp.text().catch(function () { return ""; });
+        return { error: "Failed to search posts: " + resp.status + " " + body.slice(0, 300) };
+      }
+      var data = await resp.json();
+      var pagePosts = window.goviralParseNormalizedPosts(data, 0);
+      if (pagePosts.length === 0) break;
+      for (var pi = 0; pi < pagePosts.length; pi++) allPosts.push(pagePosts[pi]);
+      if (allPosts.length >= count) break;
+      start += pageSize;
     }
-    var data = await resp.json();
-    return { posts: window.goviralParseNormalizedPosts(data, count) };
+    return { posts: allPosts.slice(0, count) };
   } catch (err) {
     return { error: String(err) };
   }
 };
 
-window.goviralFetchTrending = async function (keywords, count) {
+window.goviralFetchTrending = async function (keywords, count, dateFilter) {
   count = count || 20;
-  try {
-    var headers = window.goviralLinkedInHeaders();
-    var url =
-      "/voyager/api/search/dash/clusters" +
-      "?q=all&keywords=" + encodeURIComponent(keywords) +
-      "&type=CONTENT&count=" + count + "&origin=FACETED_SEARCH";
+  var niche_tags = keywords
+    ? keywords.split(/[\s,]+/).filter(Boolean)
+    : [];
 
-    var resp = await fetch(url, { credentials: "include", headers: headers });
-    if (!resp.ok) {
-      var body = await resp.text().catch(function () { return ""; });
-      return { error: "Failed to fetch trending: " + resp.status + " " + body.slice(0, 300) };
-    }
-    var data = await resp.json();
-
-    var posts = window.goviralParseNormalizedPosts(data, count);
-    var niche_tags = keywords
-      ? keywords.split(/[\s,]+/).filter(Boolean)
-      : [];
+  function tagPosts(posts) {
     for (var i = 0; i < posts.length; i++) {
       posts[i].niche_tags = niche_tags;
     }
-    return { posts: posts };
+    return posts;
+  }
+
+  // 1. Try <code> entity extraction.
+  try {
+    var codeEntities = window.goviralExtractCodeEntities();
+    var hasUpdates = codeEntities.some(function (e) {
+      return (e.$type || "").indexOf("Update") !== -1;
+    });
+    if (hasUpdates) {
+      var posts = window.goviralParseNormalizedPosts({ included: codeEntities }, count);
+      if (posts.length > 0) return { posts: tagPosts(posts) };
+    }
+  } catch (e) { /* fall through */ }
+
+  // 2. Try reaction-button DOM extraction.
+  try {
+    var domPosts = window.goviralExtractSearchPostsDOM(count);
+    if (domPosts.length > 0) return { posts: tagPosts(domPosts) };
+  } catch (e) { /* fall through */ }
+
+  // 3. Fall back to REST API with pagination.
+  try {
+    var headers = window.goviralLinkedInHeaders();
+    var allPosts = [];
+    var pageSize = Math.min(count, 50);
+    var start = 0;
+    var maxPages = Math.ceil(count / pageSize);
+    for (var page = 0; page < maxPages; page++) {
+      var url =
+        "/voyager/api/search/dash/clusters" +
+        "?q=all&keywords=" + encodeURIComponent(keywords) +
+        "&type=CONTENT&count=" + pageSize + "&start=" + start +
+        "&origin=FACETED_SEARCH" +
+        (dateFilter ? "&datePosted=%22" + dateFilter + "%22" : "");
+
+      var resp = await fetch(url, { credentials: "include", headers: headers });
+      if (!resp.ok) {
+        if (allPosts.length > 0) break;
+        var body = await resp.text().catch(function () { return ""; });
+        return { error: "Failed to fetch trending: " + resp.status + " " + body.slice(0, 300) };
+      }
+      var data = await resp.json();
+      var pagePosts = window.goviralParseNormalizedPosts(data, 0);
+      if (pagePosts.length === 0) break;
+      for (var pi = 0; pi < pagePosts.length; pi++) allPosts.push(pagePosts[pi]);
+      if (allPosts.length >= count) break;
+      start += pageSize;
+    }
+    return { posts: tagPosts(allPosts.slice(0, count)) };
   } catch (err) {
     return { error: String(err) };
   }
