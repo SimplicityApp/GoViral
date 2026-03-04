@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/shuhao/goviral/pkg/models"
@@ -47,7 +48,7 @@ func (db *DB) migrate() error {
 	CREATE TABLE IF NOT EXISTS my_posts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		platform TEXT NOT NULL,
-		platform_post_id TEXT UNIQUE NOT NULL,
+		platform_post_id TEXT NOT NULL,
 		content TEXT NOT NULL,
 		likes INTEGER DEFAULT 0,
 		reposts INTEGER DEFAULT 0,
@@ -151,7 +152,7 @@ func (db *DB) migrate() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		owner TEXT NOT NULL,
 		name TEXT NOT NULL,
-		full_name TEXT UNIQUE NOT NULL,
+		full_name TEXT NOT NULL,
 		description TEXT DEFAULT '',
 		default_branch TEXT DEFAULT 'main',
 		language TEXT DEFAULT '',
@@ -232,10 +233,105 @@ func (db *DB) migrate() error {
 	db.conn.Exec("ALTER TABLE scheduled_posts ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
 	db.conn.Exec("ALTER TABLE github_repos ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
 
+	// --- Migration: drop column-level UNIQUE from my_posts and github_repos ---
+	// SQLite column-level UNIQUE creates sqlite_autoindex_<table>_N entries.
+	// These conflict with composite unique indexes for multi-tenant upserts.
+	// We rebuild the tables to remove the column-level constraint.
+	if err := db.dropColumnUnique("my_posts", `CREATE TABLE my_posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		platform TEXT NOT NULL,
+		platform_post_id TEXT NOT NULL,
+		content TEXT NOT NULL,
+		likes INTEGER DEFAULT 0,
+		reposts INTEGER DEFAULT 0,
+		comments INTEGER DEFAULT 0,
+		impressions INTEGER DEFAULT 0,
+		posted_at DATETIME,
+		fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		user_id TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("migrating my_posts unique constraint: %w", err)
+	}
+
+	if err := db.dropColumnUnique("github_repos", `CREATE TABLE github_repos (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		owner TEXT NOT NULL,
+		name TEXT NOT NULL,
+		full_name TEXT NOT NULL,
+		description TEXT DEFAULT '',
+		default_branch TEXT DEFAULT 'main',
+		language TEXT DEFAULT '',
+		added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		target_audience TEXT DEFAULT '',
+		links_json TEXT DEFAULT '[]',
+		user_id TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("migrating github_repos unique constraint: %w", err)
+	}
+
 	// Composite unique indexes for user-scoped data
+	// NOTE: These must run AFTER dropColumnUnique table rebuilds, which destroy all indexes.
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_my_posts_user_platform_post ON my_posts(user_id, platform_post_id)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_user_platform ON persona(user_id, platform)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_github_repos_user_fullname ON github_repos(user_id, full_name)")
+
+	return nil
+}
+
+// dropColumnUnique checks if a table has a sqlite_autoindex (column-level UNIQUE)
+// and rebuilds the table without it. Idempotent: no-ops if no autoindex exists.
+func (db *DB) dropColumnUnique(tableName, createSQL string) error {
+	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA index_list(%s)", tableName))
+	if err != nil {
+		return fmt.Errorf("querying index list for %s: %w", tableName, err)
+	}
+	defer rows.Close()
+
+	hasAutoIndex := false
+	for rows.Next() {
+		var seq int
+		var name, origin string
+		var unique, partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return fmt.Errorf("scanning index row for %s: %w", tableName, err)
+		}
+		if strings.HasPrefix(name, "sqlite_autoindex_"+tableName+"_") {
+			hasAutoIndex = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating indexes for %s: %w", tableName, err)
+	}
+
+	if !hasAutoIndex {
+		return nil
+	}
+
+	// Rebuild the table inside a transaction to remove column-level UNIQUE
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction for %s rebuild: %w", tableName, err)
+	}
+	defer tx.Rollback()
+
+	tmpName := tableName + "_old"
+	if _, err := tx.Exec(fmt.Sprintf("ALTER TABLE %s RENAME TO %s", tableName, tmpName)); err != nil {
+		return fmt.Errorf("renaming %s to %s: %w", tableName, tmpName, err)
+	}
+	if _, err := tx.Exec(createSQL); err != nil {
+		return fmt.Errorf("creating new %s: %w", tableName, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("INSERT INTO %s SELECT * FROM %s", tableName, tmpName)); err != nil {
+		return fmt.Errorf("copying data from %s into %s: %w", tmpName, tableName, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("DROP TABLE %s", tmpName)); err != nil {
+		return fmt.Errorf("dropping %s: %w", tmpName, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing %s rebuild: %w", tableName, err)
+	}
 
 	return nil
 }
