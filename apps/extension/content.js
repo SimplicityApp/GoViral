@@ -21,6 +21,34 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// Helper: send message to background and post result back to page.
+// Handles chrome.runtime.lastError and undefined responses gracefully.
+function forwardToBackground(msg, resultType, requestId) {
+  chrome.runtime.sendMessage(msg, (response) => {
+    const err = chrome.runtime.lastError;
+    if (err) {
+      console.warn("[GoViral] content.js: chrome.runtime.lastError for", msg.type, err.message);
+      window.postMessage(
+        { type: resultType, requestId, success: false, error: err.message },
+        window.location.origin
+      );
+      return;
+    }
+    if (!response) {
+      console.warn("[GoViral] content.js: undefined response for", msg.type);
+      window.postMessage(
+        { type: resultType, requestId, success: false, error: "No response from extension background" },
+        window.location.origin
+      );
+      return;
+    }
+    window.postMessage(
+      { type: resultType, requestId, ...response },
+      window.location.origin
+    );
+  });
+}
+
 // Listen for messages from the page
 window.addEventListener("message", (event) => {
   // Security: only accept messages from same origin and same window
@@ -38,59 +66,43 @@ window.addEventListener("message", (event) => {
   }
 
   if (type === "GOVIRAL_EXTRACT_COOKIES") {
-    chrome.runtime.sendMessage(
+    forwardToBackground(
       { type: "GOVIRAL_EXTRACT_COOKIES" },
-      (response) => {
-        window.postMessage(
-          { type: "GOVIRAL_COOKIES_RESULT", requestId, ...response },
-          window.location.origin
-        );
-      }
+      "GOVIRAL_COOKIES_RESULT",
+      requestId
     );
   }
 
   if (type === "GOVIRAL_LINKEDIN_FETCH_POSTS") {
-    chrome.runtime.sendMessage(
+    forwardToBackground(
       { type: "GOVIRAL_LINKEDIN_FETCH_POSTS", count: event.data.count },
-      (response) => {
-        window.postMessage(
-          { type: "GOVIRAL_LINKEDIN_FETCH_POSTS_RESULT", requestId, ...response },
-          window.location.origin
-        );
-      }
+      "GOVIRAL_LINKEDIN_FETCH_POSTS_RESULT",
+      requestId
     );
   }
 
   if (type === "GOVIRAL_LINKEDIN_FETCH_FEED") {
-    chrome.runtime.sendMessage(
+    forwardToBackground(
       { type: "GOVIRAL_LINKEDIN_FETCH_FEED", count: event.data.count },
-      (response) => {
-        window.postMessage(
-          { type: "GOVIRAL_LINKEDIN_FETCH_FEED_RESULT", requestId, ...response },
-          window.location.origin
-        );
-      }
+      "GOVIRAL_LINKEDIN_FETCH_FEED_RESULT",
+      requestId
     );
   }
 
   if (type === "GOVIRAL_LINKEDIN_SEARCH_POSTS") {
-    chrome.runtime.sendMessage(
+    forwardToBackground(
       {
         type: "GOVIRAL_LINKEDIN_SEARCH_POSTS",
         keywords: event.data.keywords,
         count: event.data.count,
       },
-      (response) => {
-        window.postMessage(
-          { type: "GOVIRAL_LINKEDIN_SEARCH_POSTS_RESULT", requestId, ...response },
-          window.location.origin
-        );
-      }
+      "GOVIRAL_LINKEDIN_SEARCH_POSTS_RESULT",
+      requestId
     );
   }
 
   if (type === "GOVIRAL_LINKEDIN_FETCH_TRENDING") {
-    chrome.runtime.sendMessage(
+    forwardToBackground(
       {
         type: "GOVIRAL_LINKEDIN_FETCH_TRENDING",
         niches: event.data.niches,
@@ -98,12 +110,8 @@ window.addEventListener("message", (event) => {
         keywords: event.data.keywords,
         count: event.data.count,
       },
-      (response) => {
-        window.postMessage(
-          { type: "GOVIRAL_LINKEDIN_FETCH_TRENDING_RESULT", requestId, ...response },
-          window.location.origin
-        );
-      }
+      "GOVIRAL_LINKEDIN_FETCH_TRENDING_RESULT",
+      requestId
     );
   }
 });

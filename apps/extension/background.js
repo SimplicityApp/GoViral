@@ -64,18 +64,30 @@ async function ensureLinkedInPage(url, pathMatch) {
 // Scroll the LinkedIn page to trigger lazy-loading of additional posts.
 async function scrollLinkedInPage(tabId, scrollCount) {
   if (!scrollCount || scrollCount <= 0) return;
-  await chrome.scripting.executeScript({
+  // Fire scroll script (executeScript doesn't await async funcs in MAIN world)
+  chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
-    func: async (numScrolls) => {
-      for (var i = 0; i < numScrolls; i++) {
+    func: (numScrolls) => {
+      var i = 0;
+      function step() {
+        if (i >= numScrolls) return;
+        // LinkedIn search pages set body overflow:hidden and scroll
+        // inside <main id="workspace">. Activity pages scroll via window.
+        var workspace = document.querySelector('main#workspace');
+        if (workspace && workspace.scrollHeight > workspace.clientHeight) {
+          workspace.scrollTop = workspace.scrollHeight;
+        }
         window.scrollTo(0, document.body.scrollHeight);
-        await new Promise(function (r) { setTimeout(r, 1500); });
+        i++;
+        setTimeout(step, 1500);
       }
-      await new Promise(function (r) { setTimeout(r, 500); });
+      step();
     },
     args: [scrollCount],
   });
+  // Wait for scrolling to finish: scrollCount * 1.5s + 2s buffer
+  await new Promise((r) => setTimeout(r, scrollCount * 1500 + 2000));
 }
 
 // Inject linkedin-api.js into the tab and call one of the goviralXxx functions.
@@ -217,6 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const searchUrl =
           "https://www.linkedin.com/search/results/content/" +
           "?keywords=" + encodeURIComponent(keywords) +
+          "&postedBy=%5B%22following%22%5D" +
           "&origin=GLOBAL_SEARCH_HEADER";
         const { tabId, created } = await ensureLinkedInPage(
           searchUrl,
@@ -227,6 +240,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const result = await callLinkedInApi(tabId, "goviralSearchPosts", [
           keywords,
           count,
+          "following",
         ]);
         if (created) chrome.tabs.remove(tabId).catch(() => {});
         sendResponse({ success: true, ...result });
@@ -245,7 +259,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const period = message.period || "24h";
         const dateFilter = mapPeriodToLinkedInDateFilter(period);
 
+        console.log("[GoViral] BG: FETCH_TRENDING start", { niches, period, dateFilter, count });
+
         if (niches.length === 0) {
+          console.log("[GoViral] BG: no niches, returning empty");
           sendResponse({ success: true, posts: [] });
           return;
         }
@@ -262,17 +279,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             "?keywords=" + encodeURIComponent(niche) +
             "&sortBy=%22date_posted%22" +
             "&datePosted=%22" + dateFilter + "%22" +
+            "&postedBy=%5B%22following%22%5D" +
             "&origin=FACETED_SEARCH";
 
+          console.log("[GoViral] BG: niche", i, niche, "navigating to", searchUrl);
           const nav = await ensureLinkedInPage(searchUrl, "/search/results/content");
           tabId = nav.tabId;
           if (nav.created) created = true;
+          console.log("[GoViral] BG: page loaded, tabId=", tabId, "created=", nav.created);
 
           await scrollLinkedInPage(tabId, 5);
+          console.log("[GoViral] BG: scroll complete, calling callLinkedInApi");
 
-          const result = await callLinkedInApi(tabId, "goviralFetchTrending", [
-            niche, count, dateFilter,
-          ]);
+          let result;
+          try {
+            result = await callLinkedInApi(tabId, "goviralFetchTrending", [
+              niche, count, dateFilter, "following",
+            ]);
+          } catch (apiErr) {
+            console.error("[GoViral] BG: callLinkedInApi threw:", apiErr);
+            result = null;
+          }
+
+          console.log("[GoViral] BG: callLinkedInApi result:", result ? `${(result.posts || []).length} posts, error=${result.error || "none"}` : "null/undefined");
 
           if (result && result.posts) {
             for (let j = 0; j < result.posts.length; j++) {
@@ -286,8 +315,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (created && tabId) chrome.tabs.remove(tabId).catch(() => {});
+        console.log("[GoViral] BG: FETCH_TRENDING done, total posts:", allPosts.length);
         sendResponse({ success: true, posts: allPosts.slice(0, count) });
       } catch (err) {
+        console.error("[GoViral] BG: FETCH_TRENDING error:", err);
         sendResponse({ success: false, error: String(err) });
       }
     })();
