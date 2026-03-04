@@ -463,7 +463,7 @@ func (d *Daemon) runDigest(ctx context.Context, platform string) {
 		// Build CompeteEntry list
 		var entries []models.CompeteEntry
 		for _, cid := range contentIDs {
-			content, err := d.db.GetGeneratedContentByID(cid)
+			content, err := d.db.GetGeneratedContentByID("", cid)
 			if err != nil || content == nil {
 				slog.Warn("digest: skipping content for competition", "content_id", cid, "error", err)
 				continue
@@ -496,7 +496,7 @@ func (d *Daemon) runDigest(ctx context.Context, platform string) {
 			// Archive losers
 			for _, cid := range contentIDs {
 				if !winnerSet[cid] {
-					if err := d.db.UpdateGeneratedContentStatus(cid, "archived"); err != nil {
+					if err := d.db.UpdateGeneratedContentStatus("", cid, "archived"); err != nil {
 						slog.Error("digest: archiving loser content", "content_id", cid, "error", err)
 					}
 				}
@@ -696,7 +696,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 	if d.competeFn != nil && len(contentIDs) > maxWinners {
 		var entries []models.CompeteEntry
 		for _, cid := range contentIDs {
-			content, err := d.db.GetGeneratedContentByID(cid)
+			content, err := d.db.GetGeneratedContentByID("", cid)
 			if err != nil || content == nil {
 				continue
 			}
@@ -730,7 +730,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 			// Archive non-winners
 			for _, cid := range contentIDs {
 				if !winnerSet[cid] {
-					d.db.UpdateGeneratedContentStatus(cid, "archived")
+					d.db.UpdateGeneratedContentStatus("", cid, "archived")
 				}
 			}
 		}
@@ -739,7 +739,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 		if len(winnerContentIDs) > maxWinners {
 			winnerContentIDs = winnerContentIDs[:maxWinners]
 			for _, cid := range contentIDs[maxWinners:] {
-				d.db.UpdateGeneratedContentStatus(cid, "archived")
+				d.db.UpdateGeneratedContentStatus("", cid, "archived")
 			}
 		}
 	}
@@ -777,7 +777,7 @@ func (d *Daemon) runAutoPublishDigest(ctx context.Context, platform string, tren
 	allSuccess := true
 	for _, cid := range winnerContentIDs {
 		// Determine action type from content
-		content, _ := d.db.GetGeneratedContentByID(cid)
+		content, _ := d.db.GetGeneratedContentByID("", cid)
 		action := "post"
 		if content != nil {
 			if content.IsComment {
@@ -900,7 +900,7 @@ func (d *Daemon) runStandardDigest(ctx context.Context, platform string, trendin
 	if d.competeFn != nil && len(contentIDs) > maxWinners {
 		var entries []models.CompeteEntry
 		for _, cid := range contentIDs {
-			content, err := d.db.GetGeneratedContentByID(cid)
+			content, err := d.db.GetGeneratedContentByID("", cid)
 			if err != nil || content == nil {
 				continue
 			}
@@ -929,7 +929,7 @@ func (d *Daemon) runStandardDigest(ctx context.Context, platform string, trendin
 			}
 			for _, cid := range contentIDs {
 				if !winnerSet[cid] {
-					d.db.UpdateGeneratedContentStatus(cid, "archived")
+					d.db.UpdateGeneratedContentStatus("", cid, "archived")
 				}
 			}
 		}
@@ -1411,7 +1411,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		// Validate X post length before publishing
 		if batch.Platform == "x" {
 			for _, cid := range contentIDs {
-				c, err := d.db.GetGeneratedContentByID(cid)
+				c, err := d.db.GetGeneratedContentByID("", cid)
 				if err != nil {
 					return fmt.Errorf("fetching content %d for validation: %w", cid, err)
 				}
@@ -1466,7 +1466,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 	case "edit":
 		// Apply edits to content
 		for contentID, newText := range intent.Edits {
-			if err := d.db.UpdateGeneratedContentText(contentID, newText); err != nil {
+			if err := d.db.UpdateGeneratedContentText("", contentID, newText); err != nil {
 				slog.Error("applying edit", "content_id", contentID, "error", err)
 			}
 		}
@@ -1507,7 +1507,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		}
 
 		for _, cid := range contentIDs {
-			id, err := d.db.InsertScheduledPost(cid, *intent.ScheduleAt)
+			id, err := d.db.InsertScheduledPost("", cid, *intent.ScheduleAt)
 			if err != nil {
 				slog.Error("scheduling content", "content_id", cid, "error", err)
 				continue
@@ -1538,7 +1538,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 			return fmt.Errorf("rewrite requires Claude API key to be configured")
 		}
 
-		content, err := d.db.GetGeneratedContentByID(intent.ContentIDs[0])
+		content, err := d.db.GetGeneratedContentByID("", intent.ContentIDs[0])
 		if err != nil {
 			return fmt.Errorf("fetching content for rewrite: %w", err)
 		}
@@ -1560,7 +1560,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 
 		// Fetch persona for the platform
 		var persona models.Persona
-		p, err := d.db.GetPersona(batch.Platform)
+		p, err := d.db.GetPersona("", batch.Platform)
 		if err != nil {
 			slog.Warn("fetching persona for rewrite, using empty", "error", err)
 		}
@@ -1573,16 +1573,16 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		if intent.IsRepost != nil {
 			isRepost = *intent.IsRepost
 			if isRepost != content.IsRepost {
-				if err := d.db.UpdateGeneratedContentIsRepost(intent.ContentIDs[0], isRepost); err != nil {
+				if err := d.db.UpdateGeneratedContentIsRepost("", intent.ContentIDs[0], isRepost); err != nil {
 					slog.Error("updating is_repost flag", "content_id", intent.ContentIDs[0], "error", err)
 				}
 				// Set or clear quote_tweet_id when toggling repost mode
 				if isRepost {
-					if err := d.db.UpdateGeneratedContentQuoteTweetID(intent.ContentIDs[0], tp.PlatformPostID); err != nil {
+					if err := d.db.UpdateGeneratedContentQuoteTweetID("", intent.ContentIDs[0], tp.PlatformPostID); err != nil {
 						slog.Error("setting quote_tweet_id", "content_id", intent.ContentIDs[0], "error", err)
 					}
 				} else {
-					if err := d.db.UpdateGeneratedContentQuoteTweetID(intent.ContentIDs[0], ""); err != nil {
+					if err := d.db.UpdateGeneratedContentQuoteTweetID("", intent.ContentIDs[0], ""); err != nil {
 						slog.Error("clearing quote_tweet_id", "content_id", intent.ContentIDs[0], "error", err)
 					}
 				}
@@ -1617,7 +1617,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		}
 
 		// Update draft text in DB
-		if err := d.db.UpdateGeneratedContentText(intent.ContentIDs[0], results[0].Content); err != nil {
+		if err := d.db.UpdateGeneratedContentText("", intent.ContentIDs[0], results[0].Content); err != nil {
 			return fmt.Errorf("saving rewritten content: %w", err)
 		}
 
@@ -1640,7 +1640,7 @@ func (d *Daemon) executeBatchAction(ctx context.Context, batch *models.DaemonBat
 		if len(intent.ContentIDs) == 0 {
 			return fmt.Errorf("read requires a draft number")
 		}
-		content, err := d.db.GetGeneratedContentByID(intent.ContentIDs[0])
+		content, err := d.db.GetGeneratedContentByID("", intent.ContentIDs[0])
 		if err != nil {
 			return fmt.Errorf("fetching content for read: %w", err)
 		}

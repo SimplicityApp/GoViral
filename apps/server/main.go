@@ -82,7 +82,7 @@ func main() {
 					continue
 				}
 				for _, sp := range pending {
-					postIDs, _, err := publishSvc.Publish(ctx, sp.GeneratedContentID, false)
+					postIDs, _, err := publishSvc.Publish(ctx, sp.UserID, sp.GeneratedContentID, false)
 					if err != nil {
 						slog.Error("running due scheduled post", "schedule_id", sp.ID, "error", err)
 						database.UpdateScheduledPostStatus(sp.ID, "failed", err.Error())
@@ -190,6 +190,7 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.Auth(s.Cfg.Server.APIKey))
+		r.Use(middleware.UserID(s.DB.GetOrCreateUser))
 
 		// Read-only endpoints
 		r.Get("/health", healthH.Get)
@@ -310,7 +311,7 @@ func makeDaemonGenerateFn(svc *service.GenerateService) daemon.GenerateFunc {
 			}
 		}()
 
-		contents, err := svc.Generate(ctx, dto.GenerateRequest{
+		contents, err := svc.Generate(ctx, "", dto.GenerateRequest{
 			TrendingPostIDs: trendingIDs,
 			TargetPlatform:  platform,
 			Count:           count,
@@ -330,7 +331,7 @@ func makeDaemonGenerateFn(svc *service.GenerateService) daemon.GenerateFunc {
 
 func makeDaemonPublishFn(svc *service.PublishService) daemon.PublishFunc {
 	return func(ctx context.Context, contentID int64) ([]string, error) {
-		postIDs, _, err := svc.Publish(ctx, contentID, false)
+		postIDs, _, err := svc.Publish(ctx, "", contentID, false)
 		return postIDs, err
 	}
 }
@@ -384,7 +385,7 @@ func makeDaemonCommentGenerateFn(svc *service.GenerateService) daemon.CommentGen
 	return func(ctx context.Context, platform string, trendingIDs []int64, count int) ([]int64, error) {
 		var allIDs []int64
 		for _, tpID := range trendingIDs {
-			contents, err := svc.GenerateComment(ctx, tpID, platform, count)
+			contents, err := svc.GenerateComment(ctx, "", tpID, platform, count)
 			if err != nil {
 				slog.Error("generating comment for trending post", "trending_id", tpID, "error", err)
 				continue
@@ -410,7 +411,7 @@ func makeDaemonCompeteFn(cfg *config.Config) daemon.CompeteFunc {
 
 func makeDaemonScheduleFn(publishSvc *service.PublishService) daemon.ScheduleFunc {
 	return func(ctx context.Context, contentID int64, scheduledAt time.Time) (string, error) {
-		return publishSvc.Schedule(ctx, contentID, scheduledAt)
+		return publishSvc.Schedule(ctx, "", contentID, scheduledAt)
 	}
 }
 
