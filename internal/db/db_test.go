@@ -35,11 +35,11 @@ func TestUpsertPost_InsertAndUpdate(t *testing.T) {
 	}
 
 	// Insert
-	if err := db.UpsertPost(post); err != nil {
+	if err := db.UpsertPost("", post); err != nil {
 		t.Fatalf("UpsertPost() insert error = %v", err)
 	}
 
-	posts, err := db.GetAllPosts()
+	posts, err := db.GetAllPosts("")
 	if err != nil {
 		t.Fatalf("GetAllPosts() error = %v", err)
 	}
@@ -59,11 +59,11 @@ func TestUpsertPost_InsertAndUpdate(t *testing.T) {
 	// Update (same platform_post_id)
 	post.Content = "Updated content"
 	post.Likes = 50
-	if err := db.UpsertPost(post); err != nil {
+	if err := db.UpsertPost("", post); err != nil {
 		t.Fatalf("UpsertPost() update error = %v", err)
 	}
 
-	posts, err = db.GetAllPosts()
+	posts, err = db.GetAllPosts("")
 	if err != nil {
 		t.Fatalf("GetAllPosts() after update error = %v", err)
 	}
@@ -87,12 +87,12 @@ func TestGetPostsByPlatform(t *testing.T) {
 		{Platform: "x", PlatformPostID: "x-002", Content: "X post 2", PostedAt: time.Now()},
 	}
 	for _, p := range toInsert {
-		if err := db.UpsertPost(p); err != nil {
+		if err := db.UpsertPost("", p); err != nil {
 			t.Fatalf("UpsertPost() error = %v", err)
 		}
 	}
 
-	xPosts, err := db.GetPostsByPlatform("x")
+	xPosts, err := db.GetPostsByPlatform("","x")
 	if err != nil {
 		t.Fatalf("GetPostsByPlatform('x') error = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestGetPostsByPlatform(t *testing.T) {
 		}
 	}
 
-	liPosts, err := db.GetPostsByPlatform("linkedin")
+	liPosts, err := db.GetPostsByPlatform("","linkedin")
 	if err != nil {
 		t.Fatalf("GetPostsByPlatform('linkedin') error = %v", err)
 	}
@@ -125,12 +125,12 @@ func TestGetAllPosts(t *testing.T) {
 		{Platform: "linkedin", PlatformPostID: "li-001", Content: "Second", PostedAt: time.Now()},
 	}
 	for _, p := range toInsert {
-		if err := db.UpsertPost(p); err != nil {
+		if err := db.UpsertPost("", p); err != nil {
 			t.Fatalf("UpsertPost() error = %v", err)
 		}
 	}
 
-	all, err := db.GetAllPosts()
+	all, err := db.GetAllPosts("")
 	if err != nil {
 		t.Fatalf("GetAllPosts() error = %v", err)
 	}
@@ -142,7 +142,7 @@ func TestGetAllPosts(t *testing.T) {
 func TestGetAllPosts_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
-	all, err := db.GetAllPosts()
+	all, err := db.GetAllPosts("")
 	if err != nil {
 		t.Fatalf("GetAllPosts() error = %v", err)
 	}
@@ -166,11 +166,11 @@ func TestUpsertPersona_InsertAndUpdate(t *testing.T) {
 	}
 
 	// Insert
-	if err := db.UpsertPersona(persona); err != nil {
+	if err := db.UpsertPersona("",persona); err != nil {
 		t.Fatalf("UpsertPersona() insert error = %v", err)
 	}
 
-	got, err := db.GetPersona("x")
+	got, err := db.GetPersona("","x")
 	if err != nil {
 		t.Fatalf("GetPersona() error = %v", err)
 	}
@@ -192,11 +192,11 @@ func TestUpsertPersona_InsertAndUpdate(t *testing.T) {
 
 	// Update (same platform)
 	persona.Profile.WritingTone = "casual"
-	if err := db.UpsertPersona(persona); err != nil {
+	if err := db.UpsertPersona("",persona); err != nil {
 		t.Fatalf("UpsertPersona() update error = %v", err)
 	}
 
-	got, err = db.GetPersona("x")
+	got, err = db.GetPersona("","x")
 	if err != nil {
 		t.Fatalf("GetPersona() after update error = %v", err)
 	}
@@ -208,7 +208,7 @@ func TestUpsertPersona_InsertAndUpdate(t *testing.T) {
 func TestGetPersona_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	got, err := db.GetPersona("nonexistent")
+	got, err := db.GetPersona("","nonexistent")
 	if err != nil {
 		t.Fatalf("GetPersona() error = %v", err)
 	}
@@ -229,14 +229,14 @@ func TestUpsertPersona_MultiplePlatforms(t *testing.T) {
 		Profile:  models.PersonaProfile{WritingTone: "professional"},
 	}
 
-	if err := db.UpsertPersona(xPersona); err != nil {
+	if err := db.UpsertPersona("",xPersona); err != nil {
 		t.Fatalf("UpsertPersona(x) error = %v", err)
 	}
-	if err := db.UpsertPersona(liPersona); err != nil {
+	if err := db.UpsertPersona("",liPersona); err != nil {
 		t.Fatalf("UpsertPersona(linkedin) error = %v", err)
 	}
 
-	gotX, err := db.GetPersona("x")
+	gotX, err := db.GetPersona("","x")
 	if err != nil {
 		t.Fatalf("GetPersona('x') error = %v", err)
 	}
@@ -244,7 +244,7 @@ func TestUpsertPersona_MultiplePlatforms(t *testing.T) {
 		t.Errorf("x persona WritingTone = %q, want 'witty'", gotX.Profile.WritingTone)
 	}
 
-	gotLI, err := db.GetPersona("linkedin")
+	gotLI, err := db.GetPersona("","linkedin")
 	if err != nil {
 		t.Fatalf("GetPersona('linkedin') error = %v", err)
 	}
@@ -474,7 +474,7 @@ func TestInsertGeneratedContent(t *testing.T) {
 		Status:           "draft",
 	}
 
-	id, err := db.InsertGeneratedContent(gc)
+	id, err := db.InsertGeneratedContent("",gc)
 	if err != nil {
 		t.Fatalf("InsertGeneratedContent() error = %v", err)
 	}
@@ -492,13 +492,13 @@ func TestGetGeneratedContent(t *testing.T) {
 		{SourceTrendingID: 3, TargetPlatform: "linkedin", OriginalContent: "orig3", GeneratedContent: "gen3", Status: "draft"},
 	}
 	for _, gc := range gcs {
-		if _, err := db.InsertGeneratedContent(gc); err != nil {
+		if _, err := db.InsertGeneratedContent("",gc); err != nil {
 			t.Fatalf("InsertGeneratedContent() error = %v", err)
 		}
 	}
 
 	// All content
-	all, err := db.GetGeneratedContent("", "", 0)
+	all, err := db.GetGeneratedContent("","", "", 0)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('', '', 0) error = %v", err)
 	}
@@ -507,7 +507,7 @@ func TestGetGeneratedContent(t *testing.T) {
 	}
 
 	// Filter by status
-	drafts, err := db.GetGeneratedContent("draft", "", 0)
+	drafts, err := db.GetGeneratedContent("","draft", "", 0)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('draft', '', 0) error = %v", err)
 	}
@@ -515,7 +515,7 @@ func TestGetGeneratedContent(t *testing.T) {
 		t.Errorf("GetGeneratedContent('draft', '', 0) returned %d, want 2", len(drafts))
 	}
 
-	approved, err := db.GetGeneratedContent("approved", "", 0)
+	approved, err := db.GetGeneratedContent("","approved", "", 0)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('approved', '', 0) error = %v", err)
 	}
@@ -524,7 +524,7 @@ func TestGetGeneratedContent(t *testing.T) {
 	}
 
 	// With limit
-	limited, err := db.GetGeneratedContent("", "", 2)
+	limited, err := db.GetGeneratedContent("","", "", 2)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('', '', 2) error = %v", err)
 	}
@@ -533,7 +533,7 @@ func TestGetGeneratedContent(t *testing.T) {
 	}
 
 	// Filter by platform
-	linkedin, err := db.GetGeneratedContent("", "linkedin", 0)
+	linkedin, err := db.GetGeneratedContent("","", "linkedin", 0)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('', 'linkedin', 0) error = %v", err)
 	}
@@ -542,7 +542,7 @@ func TestGetGeneratedContent(t *testing.T) {
 	}
 
 	// Filter by status and platform
-	xDrafts, err := db.GetGeneratedContent("draft", "x", 0)
+	xDrafts, err := db.GetGeneratedContent("","draft", "x", 0)
 	if err != nil {
 		t.Fatalf("GetGeneratedContent('draft', 'x', 0) error = %v", err)
 	}
@@ -563,12 +563,12 @@ func TestGetGeneratedContentByID(t *testing.T) {
 		PromptUsed:       "prompt",
 		Status:           "draft",
 	}
-	id, err := db.InsertGeneratedContent(gc)
+	id, err := db.InsertGeneratedContent("",gc)
 	if err != nil {
 		t.Fatalf("InsertGeneratedContent() error = %v", err)
 	}
 
-	got, err := db.GetGeneratedContentByID(id)
+	got, err := db.GetGeneratedContentByID("",id)
 	if err != nil {
 		t.Fatalf("GetGeneratedContentByID(%d) error = %v", id, err)
 	}
@@ -589,7 +589,7 @@ func TestGetGeneratedContentByID(t *testing.T) {
 func TestGetGeneratedContentByID_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	got, err := db.GetGeneratedContentByID(999)
+	got, err := db.GetGeneratedContentByID("",999)
 	if err != nil {
 		t.Fatalf("GetGeneratedContentByID(999) error = %v", err)
 	}
@@ -608,17 +608,17 @@ func TestUpdateGeneratedContentStatus(t *testing.T) {
 		GeneratedContent: "generated",
 		Status:           "draft",
 	}
-	id, err := db.InsertGeneratedContent(gc)
+	id, err := db.InsertGeneratedContent("",gc)
 	if err != nil {
 		t.Fatalf("InsertGeneratedContent() error = %v", err)
 	}
 
 	// Update draft -> approved
-	if err := db.UpdateGeneratedContentStatus(id, "approved"); err != nil {
+	if err := db.UpdateGeneratedContentStatus("",id, "approved"); err != nil {
 		t.Fatalf("UpdateGeneratedContentStatus('approved') error = %v", err)
 	}
 
-	got, err := db.GetGeneratedContentByID(id)
+	got, err := db.GetGeneratedContentByID("",id)
 	if err != nil {
 		t.Fatalf("GetGeneratedContentByID() error = %v", err)
 	}
@@ -627,11 +627,11 @@ func TestUpdateGeneratedContentStatus(t *testing.T) {
 	}
 
 	// Update approved -> posted
-	if err := db.UpdateGeneratedContentStatus(id, "posted"); err != nil {
+	if err := db.UpdateGeneratedContentStatus("",id, "posted"); err != nil {
 		t.Fatalf("UpdateGeneratedContentStatus('posted') error = %v", err)
 	}
 
-	got, err = db.GetGeneratedContentByID(id)
+	got, err = db.GetGeneratedContentByID("",id)
 	if err != nil {
 		t.Fatalf("GetGeneratedContentByID() error = %v", err)
 	}

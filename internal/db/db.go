@@ -217,32 +217,64 @@ func (db *DB) migrate() error {
 		  )
 	`)
 
+	// --- Multi-tenancy: users table and user_id columns ---
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		uuid TEXT UNIQUE NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Add user_id column to user-scoped tables (idempotent ALTERs)
+	db.conn.Exec("ALTER TABLE my_posts ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+	db.conn.Exec("ALTER TABLE persona ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+	db.conn.Exec("ALTER TABLE generated_content ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+	db.conn.Exec("ALTER TABLE scheduled_posts ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+	db.conn.Exec("ALTER TABLE github_repos ADD COLUMN user_id TEXT NOT NULL DEFAULT ''")
+
+	// Composite unique indexes for user-scoped data
+	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_my_posts_user_platform_post ON my_posts(user_id, platform_post_id)")
+	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_user_platform ON persona(user_id, platform)")
+	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_github_repos_user_fullname ON github_repos(user_id, full_name)")
+
+	return nil
+}
+
+// GetOrCreateUser upserts a user by UUID, updating last_seen_at on conflict.
+func (db *DB) GetOrCreateUser(uuid string) error {
+	_, err := db.conn.Exec(
+		"INSERT INTO users (uuid) VALUES (?) ON CONFLICT(uuid) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP",
+		uuid,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting user %s: %w", uuid, err)
+	}
 	return nil
 }
 
 // --- my_posts CRUD ---
 
-// UpsertPost inserts or updates a post by platform_post_id.
-func (db *DB) UpsertPost(p *models.Post) error {
+// UpsertPost inserts or updates a post by (user_id, platform_post_id).
+func (db *DB) UpsertPost(userID string, p *models.Post) error {
 	query := `
-	INSERT INTO my_posts (platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(platform_post_id) DO UPDATE SET
+	INSERT INTO my_posts (user_id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(user_id, platform_post_id) DO UPDATE SET
 		content=excluded.content, likes=excluded.likes, reposts=excluded.reposts,
 		comments=excluded.comments, impressions=excluded.impressions, fetched_at=excluded.fetched_at
 	`
-	_, err := db.conn.Exec(query, p.Platform, p.PlatformPostID, p.Content, p.Likes, p.Reposts, p.Comments, p.Impressions, p.PostedAt, time.Now())
+	_, err := db.conn.Exec(query, userID, p.Platform, p.PlatformPostID, p.Content, p.Likes, p.Reposts, p.Comments, p.Impressions, p.PostedAt, time.Now())
 	if err != nil {
 		return fmt.Errorf("upserting post: %w", err)
 	}
 	return nil
 }
 
-// GetPostsByPlatform returns all posts for a given platform.
-func (db *DB) GetPostsByPlatform(platform string) ([]models.Post, error) {
+// GetPostsByPlatform returns all posts for a given platform and user.
+func (db *DB) GetPostsByPlatform(userID string, platform string) ([]models.Post, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE platform = ? ORDER BY posted_at DESC",
-		platform,
+		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? AND platform = ? ORDER BY posted_at DESC",
+		userID, platform,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying posts: %w", err)
@@ -251,10 +283,11 @@ func (db *DB) GetPostsByPlatform(platform string) ([]models.Post, error) {
 	return scanPosts(rows)
 }
 
-// GetAllPosts returns all posts across platforms.
-func (db *DB) GetAllPosts() ([]models.Post, error) {
+// GetAllPosts returns all posts across platforms for a user.
+func (db *DB) GetAllPosts(userID string) ([]models.Post, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts ORDER BY posted_at DESC",
+		"SELECT id, platform, platform_post_id, content, likes, reposts, comments, impressions, posted_at, fetched_at FROM my_posts WHERE user_id = ? ORDER BY posted_at DESC",
+		userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying all posts: %w", err)
@@ -277,20 +310,20 @@ func scanPosts(rows *sql.Rows) ([]models.Post, error) {
 
 // --- persona CRUD ---
 
-// UpsertPersona inserts or updates a persona profile for a platform.
-func (db *DB) UpsertPersona(p *models.Persona) error {
+// UpsertPersona inserts or updates a persona profile for a platform and user.
+func (db *DB) UpsertPersona(userID string, p *models.Persona) error {
 	profileJSON, err := json.Marshal(p.Profile)
 	if err != nil {
 		return fmt.Errorf("marshaling persona profile: %w", err)
 	}
 
-	// Check if persona exists for this platform
+	// Check if persona exists for this platform and user
 	var existingID int64
-	err = db.conn.QueryRow("SELECT id FROM persona WHERE platform = ?", p.Platform).Scan(&existingID)
+	err = db.conn.QueryRow("SELECT id FROM persona WHERE platform = ? AND user_id = ?", p.Platform, userID).Scan(&existingID)
 	if err == sql.ErrNoRows {
 		_, err = db.conn.Exec(
-			"INSERT INTO persona (platform, profile_json) VALUES (?, ?)",
-			p.Platform, string(profileJSON),
+			"INSERT INTO persona (platform, profile_json, user_id) VALUES (?, ?, ?)",
+			p.Platform, string(profileJSON), userID,
 		)
 		if err != nil {
 			return fmt.Errorf("inserting persona: %w", err)
@@ -309,13 +342,13 @@ func (db *DB) UpsertPersona(p *models.Persona) error {
 	return nil
 }
 
-// GetPersona returns the persona for a given platform.
-func (db *DB) GetPersona(platform string) (*models.Persona, error) {
+// GetPersona returns the persona for a given platform and user.
+func (db *DB) GetPersona(userID string, platform string) (*models.Persona, error) {
 	var p models.Persona
 	var profileJSON string
 	err := db.conn.QueryRow(
-		"SELECT id, platform, profile_json, created_at, updated_at FROM persona WHERE platform = ?",
-		platform,
+		"SELECT id, platform, profile_json, created_at, updated_at FROM persona WHERE platform = ? AND user_id = ?",
+		platform, userID,
 	).Scan(&p.ID, &p.Platform, &profileJSON, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -460,14 +493,14 @@ func (db *DB) GetTrendingPostByID(id int64) (*models.TrendingPost, error) {
 // --- generated_content CRUD ---
 
 // InsertGeneratedContent inserts a new generated content record.
-func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error) {
+func (db *DB) InsertGeneratedContent(userID string, gc *models.GeneratedContent) (int64, error) {
 	sourceType := gc.SourceType
 	if sourceType == "" {
 		sourceType = "trending"
 	}
 	result, err := db.conn.Exec(
-		"INSERT INTO generated_content (source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path, is_repost, quote_tweet_id, is_comment, source_type, source_commit_id, code_image_path, code_image_description, video_path, thumbnail_path, video_duration, video_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath, gc.IsRepost, gc.QuoteTweetID, gc.IsComment, sourceType, gc.SourceCommitID, gc.CodeImagePath, gc.CodeImageDescription, gc.VideoPath, gc.ThumbnailPath, gc.VideoDuration, gc.VideoTitle,
+		"INSERT INTO generated_content (user_id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, status, image_prompt, image_path, is_repost, quote_tweet_id, is_comment, source_type, source_commit_id, code_image_path, code_image_description, video_path, thumbnail_path, video_duration, video_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		userID, gc.SourceTrendingID, gc.TargetPlatform, gc.OriginalContent, gc.GeneratedContent, gc.PersonaID, gc.PromptUsed, gc.Status, gc.ImagePrompt, gc.ImagePath, gc.IsRepost, gc.QuoteTweetID, gc.IsComment, sourceType, gc.SourceCommitID, gc.CodeImagePath, gc.CodeImageDescription, gc.VideoPath, gc.ThumbnailPath, gc.VideoDuration, gc.VideoTitle,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting generated content: %w", err)
@@ -475,11 +508,14 @@ func (db *DB) InsertGeneratedContent(gc *models.GeneratedContent) (int64, error)
 	return result.LastInsertId()
 }
 
-// GetGeneratedContent returns generated content with optional status and platform filters.
-func (db *DB) GetGeneratedContent(status string, platform string, limit int) ([]models.GeneratedContent, error) {
+// GetGeneratedContent returns generated content with optional status and platform filters for a user.
+func (db *DB) GetGeneratedContent(userID string, status string, platform string, limit int) ([]models.GeneratedContent, error) {
 	query := "SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, ''), COALESCE(is_comment, 0), COALESCE(source_type, 'trending'), COALESCE(source_commit_id, 0), COALESCE(code_image_path, ''), COALESCE(code_image_description, ''), COALESCE(video_path, ''), COALESCE(thumbnail_path, ''), COALESCE(video_duration, 0), COALESCE(video_title, '') FROM generated_content"
 	var args []interface{}
 	var conditions []string
+
+	conditions = append(conditions, "user_id = ?")
+	args = append(args, userID)
 
 	if status != "" {
 		conditions = append(conditions, "status = ?")
@@ -521,12 +557,12 @@ func (db *DB) GetGeneratedContent(status string, platform string, limit int) ([]
 	return contents, rows.Err()
 }
 
-// GetGeneratedContentByID returns a single generated content record by ID.
-func (db *DB) GetGeneratedContentByID(id int64) (*models.GeneratedContent, error) {
+// GetGeneratedContentByID returns a single generated content record by ID, scoped to user.
+func (db *DB) GetGeneratedContentByID(userID string, id int64) (*models.GeneratedContent, error) {
 	var gc models.GeneratedContent
 	err := db.conn.QueryRow(
-		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, ''), COALESCE(is_comment, 0), COALESCE(source_type, 'trending'), COALESCE(source_commit_id, 0), COALESCE(code_image_path, ''), COALESCE(code_image_description, ''), COALESCE(video_path, ''), COALESCE(thumbnail_path, ''), COALESCE(video_duration, 0), COALESCE(video_title, '') FROM generated_content WHERE id = ?",
-		id,
+		"SELECT id, source_trending_id, target_platform, original_content, generated_content, persona_id, prompt_used, created_at, status, COALESCE(platform_post_ids, ''), posted_at, COALESCE(image_prompt, ''), COALESCE(image_path, ''), COALESCE(is_repost, 0), COALESCE(quote_tweet_id, ''), COALESCE(is_comment, 0), COALESCE(source_type, 'trending'), COALESCE(source_commit_id, 0), COALESCE(code_image_path, ''), COALESCE(code_image_description, ''), COALESCE(video_path, ''), COALESCE(thumbnail_path, ''), COALESCE(video_duration, 0), COALESCE(video_title, '') FROM generated_content WHERE id = ? AND user_id = ?",
+		id, userID,
 	).Scan(&gc.ID, &gc.SourceTrendingID, &gc.TargetPlatform, &gc.OriginalContent, &gc.GeneratedContent, &gc.PersonaID, &gc.PromptUsed, &gc.CreatedAt, &gc.Status, &gc.PlatformPostIDs, &gc.PostedAt, &gc.ImagePrompt, &gc.ImagePath, &gc.IsRepost, &gc.QuoteTweetID, &gc.IsComment, &gc.SourceType, &gc.SourceCommitID, &gc.CodeImagePath, &gc.CodeImageDescription, &gc.VideoPath, &gc.ThumbnailPath, &gc.VideoDuration, &gc.VideoTitle)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -537,69 +573,69 @@ func (db *DB) GetGeneratedContentByID(id int64) (*models.GeneratedContent, error
 	return &gc, nil
 }
 
-// UpdateGeneratedContentStatus updates the status of a generated content record.
-func (db *DB) UpdateGeneratedContentStatus(id int64, status string) error {
-	_, err := db.conn.Exec("UPDATE generated_content SET status = ? WHERE id = ?", status, id)
+// UpdateGeneratedContentStatus updates the status of a generated content record for a user.
+func (db *DB) UpdateGeneratedContentStatus(userID string, id int64, status string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET status = ? WHERE id = ? AND user_id = ?", status, id, userID)
 	if err != nil {
 		return fmt.Errorf("updating generated content status: %w", err)
 	}
 	return nil
 }
 
-// UpdateGeneratedContentText updates the generated_content text of a record.
-func (db *DB) UpdateGeneratedContentText(id int64, content string) error {
-	_, err := db.conn.Exec("UPDATE generated_content SET generated_content = ? WHERE id = ?", content, id)
+// UpdateGeneratedContentText updates the generated_content text of a record for a user.
+func (db *DB) UpdateGeneratedContentText(userID string, id int64, content string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET generated_content = ? WHERE id = ? AND user_id = ?", content, id, userID)
 	if err != nil {
 		return fmt.Errorf("updating generated content text: %w", err)
 	}
 	return nil
 }
 
-// UpdateGeneratedContentIsRepost updates the is_repost flag of a generated content record.
-func (db *DB) UpdateGeneratedContentIsRepost(id int64, isRepost bool) error {
+// UpdateGeneratedContentIsRepost updates the is_repost flag of a generated content record for a user.
+func (db *DB) UpdateGeneratedContentIsRepost(userID string, id int64, isRepost bool) error {
 	val := 0
 	if isRepost {
 		val = 1
 	}
-	_, err := db.conn.Exec("UPDATE generated_content SET is_repost = ? WHERE id = ?", val, id)
+	_, err := db.conn.Exec("UPDATE generated_content SET is_repost = ? WHERE id = ? AND user_id = ?", val, id, userID)
 	if err != nil {
 		return fmt.Errorf("updating generated content is_repost: %w", err)
 	}
 	return nil
 }
 
-// UpdateGeneratedContentQuoteTweetID updates the quote_tweet_id of a generated content record.
-func (db *DB) UpdateGeneratedContentQuoteTweetID(id int64, quoteTweetID string) error {
-	_, err := db.conn.Exec("UPDATE generated_content SET quote_tweet_id = ? WHERE id = ?", quoteTweetID, id)
+// UpdateGeneratedContentQuoteTweetID updates the quote_tweet_id of a generated content record for a user.
+func (db *DB) UpdateGeneratedContentQuoteTweetID(userID string, id int64, quoteTweetID string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET quote_tweet_id = ? WHERE id = ? AND user_id = ?", quoteTweetID, id, userID)
 	if err != nil {
 		return fmt.Errorf("updating generated content quote_tweet_id: %w", err)
 	}
 	return nil
 }
 
-// UpdateCodeImageDescription updates the code image description of a generated content record.
-func (db *DB) UpdateCodeImageDescription(id int64, description string) error {
-	_, err := db.conn.Exec("UPDATE generated_content SET code_image_description = ? WHERE id = ?", description, id)
+// UpdateCodeImageDescription updates the code image description of a generated content record for a user.
+func (db *DB) UpdateCodeImageDescription(userID string, id int64, description string) error {
+	_, err := db.conn.Exec("UPDATE generated_content SET code_image_description = ? WHERE id = ? AND user_id = ?", description, id, userID)
 	if err != nil {
 		return fmt.Errorf("updating code image description: %w", err)
 	}
 	return nil
 }
 
-// DeleteGeneratedContent removes a generated content record by ID.
-func (db *DB) DeleteGeneratedContent(id int64) error {
-	_, err := db.conn.Exec("DELETE FROM generated_content WHERE id = ?", id)
+// DeleteGeneratedContent removes a generated content record by ID for a user.
+func (db *DB) DeleteGeneratedContent(userID string, id int64) error {
+	_, err := db.conn.Exec("DELETE FROM generated_content WHERE id = ? AND user_id = ?", id, userID)
 	if err != nil {
 		return fmt.Errorf("deleting generated content: %w", err)
 	}
 	return nil
 }
 
-// UpdateGeneratedContentPosted marks content as posted and stores the tweet IDs.
-func (db *DB) UpdateGeneratedContentPosted(id int64, platformPostIDs string) error {
+// UpdateGeneratedContentPosted marks content as posted and stores the platform post IDs for a user.
+func (db *DB) UpdateGeneratedContentPosted(userID string, id int64, platformPostIDs string) error {
 	_, err := db.conn.Exec(
-		"UPDATE generated_content SET status = 'posted', platform_post_ids = ?, posted_at = CURRENT_TIMESTAMP WHERE id = ?",
-		platformPostIDs, id,
+		"UPDATE generated_content SET status = 'posted', platform_post_ids = ?, posted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+		platformPostIDs, id, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating generated content as posted: %w", err)
@@ -610,10 +646,10 @@ func (db *DB) UpdateGeneratedContentPosted(id int64, platformPostIDs string) err
 // --- scheduled_posts CRUD ---
 
 // InsertScheduledPost schedules a generated content item for future posting.
-func (db *DB) InsertScheduledPost(contentID int64, scheduledAt time.Time) (int64, error) {
+func (db *DB) InsertScheduledPost(userID string, contentID int64, scheduledAt time.Time) (int64, error) {
 	result, err := db.conn.Exec(
-		"INSERT INTO scheduled_posts (generated_content_id, scheduled_at) VALUES (?, ?)",
-		contentID, scheduledAt,
+		"INSERT INTO scheduled_posts (user_id, generated_content_id, scheduled_at) VALUES (?, ?, ?)",
+		userID, contentID, scheduledAt,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting scheduled post: %w", err)
@@ -621,10 +657,10 @@ func (db *DB) InsertScheduledPost(contentID int64, scheduledAt time.Time) (int64
 	return result.LastInsertId()
 }
 
-// GetPendingScheduledPosts returns scheduled posts that are due and still pending.
+// GetPendingScheduledPosts returns scheduled posts that are due and still pending (all users, for daemon).
 func (db *DB) GetPendingScheduledPosts() ([]models.ScheduledPost, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, generated_content_id, scheduled_at, status, COALESCE(error_message, ''), created_at FROM scheduled_posts WHERE status = 'pending' AND scheduled_at <= CURRENT_TIMESTAMP ORDER BY scheduled_at ASC",
+		"SELECT id, generated_content_id, scheduled_at, status, COALESCE(error_message, ''), created_at, COALESCE(user_id, '') FROM scheduled_posts WHERE status = 'pending' AND scheduled_at <= CURRENT_TIMESTAMP ORDER BY scheduled_at ASC",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying pending scheduled posts: %w", err)
@@ -633,14 +669,22 @@ func (db *DB) GetPendingScheduledPosts() ([]models.ScheduledPost, error) {
 	return scanScheduledPosts(rows)
 }
 
-// GetScheduledPosts returns scheduled posts with optional status filter and limit.
-func (db *DB) GetScheduledPosts(status string, limit int) ([]models.ScheduledPost, error) {
-	query := "SELECT id, generated_content_id, scheduled_at, status, COALESCE(error_message, ''), created_at FROM scheduled_posts"
+// GetScheduledPosts returns scheduled posts with optional status filter and limit for a user.
+func (db *DB) GetScheduledPosts(userID string, status string, limit int) ([]models.ScheduledPost, error) {
+	query := "SELECT id, generated_content_id, scheduled_at, status, COALESCE(error_message, ''), created_at, COALESCE(user_id, '') FROM scheduled_posts"
 	var args []interface{}
+	var conditions []string
+
+	conditions = append(conditions, "user_id = ?")
+	args = append(args, userID)
 
 	if status != "" {
-		query += " WHERE status = ?"
+		conditions = append(conditions, "status = ?")
 		args = append(args, status)
+	}
+	query += " WHERE " + conditions[0]
+	for _, c := range conditions[1:] {
+		query += " AND " + c
 	}
 	query += " ORDER BY scheduled_at ASC"
 	if limit > 0 {
@@ -668,9 +712,9 @@ func (db *DB) UpdateScheduledPostStatus(id int64, status string, errMsg string) 
 	return nil
 }
 
-// DeleteScheduledPost deletes a scheduled post by ID.
-func (db *DB) DeleteScheduledPost(id int64) error {
-	result, err := db.conn.Exec("DELETE FROM scheduled_posts WHERE id = ?", id)
+// DeleteScheduledPost deletes a scheduled post by ID for a user.
+func (db *DB) DeleteScheduledPost(userID string, id int64) error {
+	result, err := db.conn.Exec("DELETE FROM scheduled_posts WHERE id = ? AND user_id = ?", id, userID)
 	if err != nil {
 		return fmt.Errorf("deleting scheduled post: %w", err)
 	}
@@ -688,7 +732,7 @@ func scanScheduledPosts(rows *sql.Rows) ([]models.ScheduledPost, error) {
 	var posts []models.ScheduledPost
 	for rows.Next() {
 		var sp models.ScheduledPost
-		if err := rows.Scan(&sp.ID, &sp.GeneratedContentID, &sp.ScheduledAt, &sp.Status, &sp.ErrorMessage, &sp.CreatedAt); err != nil {
+		if err := rows.Scan(&sp.ID, &sp.GeneratedContentID, &sp.ScheduledAt, &sp.Status, &sp.ErrorMessage, &sp.CreatedAt, &sp.UserID); err != nil {
 			return nil, fmt.Errorf("scanning scheduled post row: %w", err)
 		}
 		posts = append(posts, sp)

@@ -38,4 +38,5 @@ type ScheduledPost struct {
 	Status             string // "pending", "posted", "failed"
 	ErrorMessage       string
 	CreatedAt          time.Time
+	UserID             string
 }

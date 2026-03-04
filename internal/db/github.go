@@ -11,35 +11,35 @@ import (
 
 // --- github_repos CRUD ---
 
-// UpsertGitHubRepo inserts or updates a GitHub repo by full_name.
-func (db *DB) UpsertGitHubRepo(repo *models.GitHubRepo) error {
+// UpsertGitHubRepo inserts or updates a GitHub repo by (user_id, full_name).
+func (db *DB) UpsertGitHubRepo(userID string, repo *models.GitHubRepo) error {
 	linksJSON, err := json.Marshal(repo.Links)
 	if err != nil {
 		linksJSON = []byte("[]")
 	}
 
 	query := `
-	INSERT INTO github_repos (owner, name, full_name, description, default_branch, language, target_audience, links_json, added_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(full_name) DO UPDATE SET
+	INSERT INTO github_repos (user_id, owner, name, full_name, description, default_branch, language, target_audience, links_json, added_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(user_id, full_name) DO UPDATE SET
 		description=excluded.description, default_branch=excluded.default_branch, language=excluded.language,
 		target_audience=excluded.target_audience, links_json=excluded.links_json
 	RETURNING id
 	`
-	row := db.conn.QueryRow(query, repo.Owner, repo.Name, repo.FullName, repo.Description, repo.DefaultBranch, repo.Language, repo.TargetAudience, string(linksJSON), time.Now())
+	row := db.conn.QueryRow(query, userID, repo.Owner, repo.Name, repo.FullName, repo.Description, repo.DefaultBranch, repo.Language, repo.TargetAudience, string(linksJSON), time.Now())
 	if err := row.Scan(&repo.ID); err != nil {
 		return fmt.Errorf("upserting github repo: %w", err)
 	}
 	return nil
 }
 
-// GetGitHubRepo returns a repo by ID.
-func (db *DB) GetGitHubRepo(id int64) (*models.GitHubRepo, error) {
+// GetGitHubRepo returns a repo by ID, scoped to user.
+func (db *DB) GetGitHubRepo(userID string, id int64) (*models.GitHubRepo, error) {
 	var r models.GitHubRepo
 	var linksJSON string
 	err := db.conn.QueryRow(
-		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos WHERE id = ?",
-		id,
+		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos WHERE id = ? AND user_id = ?",
+		id, userID,
 	).Scan(&r.ID, &r.Owner, &r.Name, &r.FullName, &r.Description, &r.DefaultBranch, &r.Language, &r.TargetAudience, &linksJSON, &r.AddedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -55,13 +55,13 @@ func (db *DB) GetGitHubRepo(id int64) (*models.GitHubRepo, error) {
 	return &r, nil
 }
 
-// GetGitHubRepoByFullName returns a repo by its full_name (owner/name).
-func (db *DB) GetGitHubRepoByFullName(fullName string) (*models.GitHubRepo, error) {
+// GetGitHubRepoByFullName returns a repo by its full_name, scoped to user.
+func (db *DB) GetGitHubRepoByFullName(userID string, fullName string) (*models.GitHubRepo, error) {
 	var r models.GitHubRepo
 	var linksJSON string
 	err := db.conn.QueryRow(
-		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos WHERE full_name = ?",
-		fullName,
+		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos WHERE full_name = ? AND user_id = ?",
+		fullName, userID,
 	).Scan(&r.ID, &r.Owner, &r.Name, &r.FullName, &r.Description, &r.DefaultBranch, &r.Language, &r.TargetAudience, &linksJSON, &r.AddedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -77,10 +77,11 @@ func (db *DB) GetGitHubRepoByFullName(fullName string) (*models.GitHubRepo, erro
 	return &r, nil
 }
 
-// ListGitHubRepos returns all tracked repos.
-func (db *DB) ListGitHubRepos() ([]models.GitHubRepo, error) {
+// ListGitHubRepos returns all tracked repos for a user.
+func (db *DB) ListGitHubRepos(userID string) ([]models.GitHubRepo, error) {
 	rows, err := db.conn.Query(
-		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos ORDER BY added_at DESC",
+		"SELECT id, owner, name, full_name, description, default_branch, language, COALESCE(target_audience, ''), COALESCE(links_json, '[]'), added_at FROM github_repos WHERE user_id = ? ORDER BY added_at DESC",
+		userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing github repos: %w", err)
@@ -104,15 +105,15 @@ func (db *DB) ListGitHubRepos() ([]models.GitHubRepo, error) {
 	return repos, rows.Err()
 }
 
-// UpdateRepoSettings updates the target_audience and links for a repo.
-func (db *DB) UpdateRepoSettings(id int64, targetAudience string, links []models.RepoLink) error {
+// UpdateRepoSettings updates the target_audience and links for a repo, scoped to user.
+func (db *DB) UpdateRepoSettings(userID string, id int64, targetAudience string, links []models.RepoLink) error {
 	linksJSON, err := json.Marshal(links)
 	if err != nil {
 		return fmt.Errorf("marshaling repo links: %w", err)
 	}
 	_, err = db.conn.Exec(
-		"UPDATE github_repos SET target_audience = ?, links_json = ? WHERE id = ?",
-		targetAudience, string(linksJSON), id,
+		"UPDATE github_repos SET target_audience = ?, links_json = ? WHERE id = ? AND user_id = ?",
+		targetAudience, string(linksJSON), id, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating repo settings: %w", err)
@@ -120,9 +121,9 @@ func (db *DB) UpdateRepoSettings(id int64, targetAudience string, links []models
 	return nil
 }
 
-// DeleteGitHubRepo removes a tracked repo by ID.
-func (db *DB) DeleteGitHubRepo(id int64) error {
-	_, err := db.conn.Exec("DELETE FROM github_repos WHERE id = ?", id)
+// DeleteGitHubRepo removes a tracked repo by ID, scoped to user.
+func (db *DB) DeleteGitHubRepo(userID string, id int64) error {
+	_, err := db.conn.Exec("DELETE FROM github_repos WHERE id = ? AND user_id = ?", id, userID)
 	if err != nil {
 		return fmt.Errorf("deleting github repo: %w", err)
 	}
