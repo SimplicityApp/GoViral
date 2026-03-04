@@ -200,10 +200,6 @@ export function Settings() {
     )
   }
 
-  const [serverApiKey, setServerApiKey] = useState(
-    () => localStorage.getItem('goviral_api_key') || '',
-  )
-
   const [form, setForm] = useState({
     claude_api_key: '',
     gemini_api_key: '',
@@ -244,13 +240,6 @@ export function Settings() {
   )
 
   const handleSave = () => {
-    // Save server API key to localStorage (client-side only)
-    if (serverApiKey) {
-      localStorage.setItem('goviral_api_key', serverApiKey)
-    } else {
-      localStorage.removeItem('goviral_api_key')
-    }
-
     // Build nested payload matching server's UpdateConfigRequest
     const payload: UpdateConfigPayload = {
       claude: { api_key: form.claude_api_key },
@@ -282,20 +271,6 @@ export function Settings() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h2 className="mb-6 text-lg font-semibold text-[var(--color-text)]">Settings</h2>
-
-      <section className="mb-8">
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-          Server
-        </h3>
-        <MaskedInput
-          label="Server API Key"
-          value={serverApiKey}
-          onChange={setServerApiKey}
-        />
-        <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
-          Must match the api_key in your server config. Stored locally in your browser.
-        </p>
-      </section>
 
       <section className="mb-8">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">

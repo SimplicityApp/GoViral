@@ -18,8 +18,6 @@ func Setup(r chi.Router, cfg *config.Config, database *db.DB) {
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.Server.APIKey))
-
 		// Handlers will be registered here by subsequent tasks.
 	})
 }

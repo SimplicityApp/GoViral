@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ApiKeyGate } from '@/components/auth/ApiKeyGate'
 import { RootLayout } from '@/components/layout/RootLayout'
 import { PlatformLayout } from '@/components/layout/PlatformLayout'
 import { defaultPlatform } from '@/lib/platforms'
@@ -19,7 +18,6 @@ import { Privacy } from '@/pages/Privacy'
 function App() {
   return (
     <BrowserRouter>
-      <ApiKeyGate publicPaths={['/terms', '/privacy']}>
         <Routes>
           <Route path="/" element={<Navigate to={`/${defaultPlatform}/dashboard`} replace />} />
           <Route path="/terms" element={<Terms />} />
@@ -40,7 +38,6 @@ function App() {
             </Route>
           </Route>
         </Routes>
-      </ApiKeyGate>
     </BrowserRouter>
   )
 }

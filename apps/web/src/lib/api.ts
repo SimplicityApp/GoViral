@@ -24,15 +24,10 @@ function getUserID(): string {
 }
 
 function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     'Content-Type': 'application/json',
     'X-User-ID': getUserID(),
   }
-  const apiKey = localStorage.getItem('goviral_api_key')
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  }
-  return headers
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {

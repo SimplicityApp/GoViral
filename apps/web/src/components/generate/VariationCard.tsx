@@ -16,18 +16,12 @@ function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId
   const [errored, setErrored] = useState(false)
 
   useEffect(() => {
-    const apiKey = localStorage.getItem('goviral_api_key')
-    const headers: Record<string, string> = {}
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-
     // Prefer content-specific image (AI-selected snippet), fall back to commit-level
     const url = contentId > 0
       ? `${BASE_URL}/content/${contentId}/code-image`
       : `${BASE_URL}/repos/commits/${commitId}/image`
 
-    fetch(url, { headers })
+    fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error('failed')
         return res.blob()

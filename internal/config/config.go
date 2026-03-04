@@ -81,7 +81,6 @@ type TelegramConfig struct {
 
 // ServerConfig contains HTTP server settings.
 type ServerConfig struct {
-	APIKey         string   `yaml:"api_key"`
 	Port           int      `yaml:"port"`
 	AllowedOrigins []string `yaml:"allowed_origins"`
 }

@@ -57,17 +57,9 @@ func init() {
 func runSyncCookies(_ *cobra.Command, _ []string) error {
 	syncServer = strings.TrimRight(syncServer, "/")
 
-	// Resolve API key.
+	// Resolve optional API key (server no longer requires auth, but
+	// the flag is kept for backward compatibility with older servers).
 	apiKey := syncAPIKey
-	if apiKey == "" {
-		cfg, err := config.Load(config.DefaultConfigPath())
-		if err == nil && cfg.Server.APIKey != "" {
-			apiKey = cfg.Server.APIKey
-		}
-	}
-	if apiKey == "" {
-		return fmt.Errorf("no API key: pass --api-key or set server.api_key in ~/.goviral/config.yaml")
-	}
 
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	successStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
@@ -197,7 +189,9 @@ func pushCookies(url string, apiKey string, body map[string]string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

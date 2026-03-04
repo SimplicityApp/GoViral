@@ -15,13 +15,7 @@ function AttachedImagePreview({ url }: { url: string }) {
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
-    const apiKey = localStorage.getItem('goviral_api_key')
-    const headers: Record<string, string> = {}
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-
-    fetch(url, { headers })
+    fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error('failed')
         return res.blob()

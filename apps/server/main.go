@@ -189,7 +189,6 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	s.Router.Get("/api/v1/extension/download", extensionH.Download)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.Auth(s.Cfg.Server.APIKey))
 		r.Use(middleware.UserID(s.DB.GetOrCreateUser))
 
 		// Read-only endpoints
