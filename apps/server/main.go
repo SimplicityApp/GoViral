@@ -170,6 +170,9 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	xCookiesH := handler.NewXCookiesHandler(s.Cfg)
 	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg)
 
+	// Extension download handler
+	extensionH := handler.NewExtensionHandler(extensionFS())
+
 	// Auth handler
 	authH := handler.NewAuthHandler(s.Cfg)
 
@@ -249,6 +252,9 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 		r.Post("/linkedin/extract-cookies", linkedinCookiesH.ExtractCookies)
 		r.Post("/linkedin/login-cookies", linkedinCookiesH.LoginCookies)
 		r.Get("/linkedin/cookies/status", linkedinCookiesH.Status)
+
+		// Extension download
+		r.Get("/extension/download", extensionH.Download)
 
 		// OAuth flow
 		r.Post("/auth/{platform}/start", authH.Start)

@@ -212,6 +212,10 @@ func Load(path string) (*Config, error) {
 		cfg.Daemon.DigestMaxPosts = 5
 	}
 
+	if len(cfg.Niches) == 0 {
+		cfg.Niches = []string{"AI", "Programming", "Technology"}
+	}
+
 	if len(cfg.LinkedInNiches) == 0 {
 		cfg.LinkedInNiches = []string{"AI", "Programming", "Technology"}
 	}

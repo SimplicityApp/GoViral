@@ -463,10 +463,18 @@ export function Settings() {
             </div>
             <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm text-[var(--color-text-secondary)]">
               <p className="mb-2 font-medium text-[var(--color-text)]">Install the GoViral extension for one-click cookie sync:</p>
-              <ol className="list-inside list-decimal space-y-1 text-xs">
+              <a
+                href={`${BASE_URL}/extension/download`}
+                className="mb-3 inline-flex items-center gap-2 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)]"
+              >
+                <Download size={16} />
+                Download Extension
+              </a>
+              <ol className="mt-3 list-inside list-decimal space-y-1 text-xs">
+                <li>Unzip the downloaded file</li>
                 <li>Open <code className="rounded bg-[var(--color-border)] px-1">chrome://extensions</code></li>
                 <li>Enable <strong>Developer mode</strong> (top right)</li>
-                <li>Click <strong>Load unpacked</strong> and select the <code className="rounded bg-[var(--color-border)] px-1">apps/extension</code> folder</li>
+                <li>Click <strong>Load unpacked</strong> and select the unzipped folder</li>
                 <li>Refresh this page</li>
               </ol>
             </div>
