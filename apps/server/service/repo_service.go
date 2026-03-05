@@ -25,42 +25,56 @@ type RepoService struct {
 	db  *db.DB
 	cfg *config.Config
 
-	// In-memory cache for available repos
-	cachedRepos   []models.GitHubRepo
-	cachedReposAt time.Time
+	// In-memory cache for available repos, keyed by token
+	cachedRepos      map[string][]models.GitHubRepo
+	cachedReposAt    map[string]time.Time
 }
 
 // NewRepoService creates a new RepoService.
 func NewRepoService(database *db.DB, cfg *config.Config) *RepoService {
-	return &RepoService{db: database, cfg: cfg}
+	return &RepoService{
+		db:            database,
+		cfg:           cfg,
+		cachedRepos:   make(map[string][]models.GitHubRepo),
+		cachedReposAt: make(map[string]time.Time),
+	}
+}
+
+// githubToken returns the provided user token if non-empty, otherwise falls back to the global PAT.
+func (s *RepoService) githubToken(userToken string) string {
+	if userToken != "" {
+		return userToken
+	}
+	return s.cfg.GitHub.PersonalAccessToken
 }
 
 // ListAvailableRepos returns all GitHub repos accessible to the authenticated
-// user (personal + org). Results are cached in memory for 5 minutes.
-func (s *RepoService) ListAvailableRepos(ctx context.Context) ([]models.GitHubRepo, error) {
-	if s.cfg.GitHub.PersonalAccessToken == "" {
-		return nil, fmt.Errorf("GitHub personal access token not configured")
+// user (personal + org). Results are cached in memory for 5 minutes per token.
+func (s *RepoService) ListAvailableRepos(ctx context.Context, userToken string) ([]models.GitHubRepo, error) {
+	token := s.githubToken(userToken)
+	if token == "" {
+		return nil, fmt.Errorf("GitHub token not configured — connect via OAuth or set a PAT")
 	}
 
-	if s.cachedRepos != nil && time.Since(s.cachedReposAt) < 5*time.Minute {
-		return s.cachedRepos, nil
+	if cached, ok := s.cachedRepos[token]; ok && time.Since(s.cachedReposAt[token]) < 5*time.Minute {
+		return cached, nil
 	}
 
-	client := ghclient.NewClient(s.cfg.GitHub.PersonalAccessToken)
+	client := ghclient.NewClient(token)
 	repos, err := client.ListUserRepos(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing user repos: %w", err)
 	}
 
-	s.cachedRepos = repos
-	s.cachedReposAt = time.Now()
+	s.cachedRepos[token] = repos
+	s.cachedReposAt[token] = time.Now()
 
 	return repos, nil
 }
 
 // AddRepo validates a GitHub repo via the API and upserts it in the DB.
-func (s *RepoService) AddRepo(ctx context.Context, userID string, owner, name string) (*models.GitHubRepo, error) {
-	client := ghclient.NewClient(s.cfg.GitHub.PersonalAccessToken)
+func (s *RepoService) AddRepo(ctx context.Context, userID string, owner, name, userToken string) (*models.GitHubRepo, error) {
+	client := ghclient.NewClient(s.githubToken(userToken))
 
 	repo, err := client.GetRepo(ctx, owner, name)
 	if err != nil {
@@ -121,7 +135,7 @@ func (s *RepoService) GetContentByID(ctx context.Context, userID string, id int6
 // and uses it as the "since" filter (incremental fetch). For repos with no
 // stored commits yet, all commits are fetched. When limit > 0, the total number
 // of fetched commits is capped; otherwise all available commits are returned.
-func (s *RepoService) FetchCommits(ctx context.Context, userID string, repoID int64, limit int, sinceStr string, progress chan<- dto.ProgressEvent) ([]models.RepoCommitRecord, error) {
+func (s *RepoService) FetchCommits(ctx context.Context, userID string, repoID int64, limit int, sinceStr string, userToken string, progress chan<- dto.ProgressEvent) ([]models.RepoCommitRecord, error) {
 	defer close(progress)
 
 	repo, err := s.db.GetGitHubRepo(userID, repoID)
@@ -153,7 +167,7 @@ func (s *RepoService) FetchCommits(ctx context.Context, userID string, repoID in
 		}
 	}
 
-	client := ghclient.NewClient(s.cfg.GitHub.PersonalAccessToken)
+	client := ghclient.NewClient(s.githubToken(userToken))
 
 	commits, err := client.ListAllCommits(ctx, repo.Owner, repo.Name, opts, func(page int, count int) {
 		pct := 5 + min(25, page*5) // 5% → 30% during pagination
@@ -261,8 +275,16 @@ func (s *RepoService) FetchCommits(ctx context.Context, userID string, repoID in
 	return records, nil
 }
 
-// ListCommits returns stored commits for a repo.
+// ListCommits returns stored commits for a repo, after validating user ownership.
 func (s *RepoService) ListCommits(ctx context.Context, userID string, repoID int64, limit int) ([]models.RepoCommitRecord, error) {
+	repo, err := s.db.GetGitHubRepo(userID, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("getting repo %d: %w", repoID, err)
+	}
+	if repo == nil {
+		return nil, fmt.Errorf("repo %d not found", repoID)
+	}
+
 	commits, err := s.db.ListRepoCommits(repoID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing commits for repo %d: %w", repoID, err)
@@ -331,7 +353,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, userID string, re
 			Percentage: pct,
 		}
 
-		rc, err := s.db.GetRepoCommitByID(commitID)
+		rc, err := s.db.GetRepoCommitByIDForUser(userID, commitID)
 		if err != nil {
 			return nil, fmt.Errorf("getting commit %d: %w", commitID, err)
 		}
@@ -488,7 +510,7 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, userID string, re
 // ~/.goviral/images/, and returns the PNG bytes, the saved path, and any error.
 // templateName and themeName are optional; empty strings use defaults.
 func (s *RepoService) RenderCodeImage(ctx context.Context, userID string, commitID int64, templateName, themeName string) ([]byte, string, error) {
-	rc, err := s.db.GetRepoCommitByID(commitID)
+	rc, err := s.db.GetRepoCommitByIDForUser(userID, commitID)
 	if err != nil {
 		return nil, "", fmt.Errorf("getting commit %d: %w", commitID, err)
 	}
@@ -632,7 +654,7 @@ func (s *RepoService) ReRenderCodeImage(ctx context.Context, userID string, cont
 		return "", fmt.Errorf("content %d has no source commit", contentID)
 	}
 
-	rc, err := s.db.GetRepoCommitByID(gc.SourceCommitID)
+	rc, err := s.db.GetRepoCommitByIDForUser(userID, gc.SourceCommitID)
 	if err != nil {
 		return "", fmt.Errorf("getting commit %d: %w", gc.SourceCommitID, err)
 	}

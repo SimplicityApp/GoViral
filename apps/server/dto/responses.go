@@ -97,31 +97,37 @@ type ConfigResponse struct {
 }
 
 type ConfigClaudeResponse struct {
-	APIKey string `json:"api_key"`
-	Model  string `json:"model"`
+	HasGlobalKey bool   `json:"has_global_key"`
+	UserAPIKey   string `json:"user_api_key"`
+	Model        string `json:"model"`
+	DailyLimit   int    `json:"daily_limit"`
+	DailyUsed    int    `json:"daily_used"`
 }
 
 type ConfigGeminiResponse struct {
-	APIKey string `json:"api_key"`
-	Model  string `json:"model"`
+	HasGlobalKey bool   `json:"has_global_key"`
+	UserAPIKey   string `json:"user_api_key"`
+	Model        string `json:"model"`
+	DailyLimit   int    `json:"daily_limit"`
+	DailyUsed    int    `json:"daily_used"`
 }
 
 type ConfigXResponse struct {
-	APIKey        string `json:"api_key"`
-	APISecret     string `json:"api_secret"`
-	BearerToken   string `json:"bearer_token"`
-	ClientID      string `json:"client_id"`
-	ClientSecret  string `json:"client_secret"`
-	Username      string `json:"username"`
-	HasAuth       bool   `json:"has_auth"`
-	HasTwikitAuth bool   `json:"has_twikit_auth"`
-	AuthToken     string `json:"auth_token,omitempty"`
-	Ct0           string `json:"ct0,omitempty"`
+	HasAPIKey       bool   `json:"has_api_key"`
+	HasAPISecret    bool   `json:"has_api_secret"`
+	HasBearerToken  bool   `json:"has_bearer_token"`
+	HasClientID     bool   `json:"has_client_id"`
+	HasClientSecret bool   `json:"has_client_secret"`
+	Username        string `json:"username"`
+	HasAuth         bool   `json:"has_auth"`
+	HasTwikitAuth   bool   `json:"has_twikit_auth"`
+	AuthToken       string `json:"auth_token,omitempty"`
+	Ct0             string `json:"ct0,omitempty"`
 }
 
 type ConfigLinkedInResponse struct {
-	ClientID        string `json:"client_id"`
-	ClientSecret    string `json:"client_secret"`
+	HasClientID     bool   `json:"has_client_id"`
+	HasClientSecret bool   `json:"has_client_secret"`
 	HasAuth         bool   `json:"has_auth"`
 	HasLinkitinAuth bool   `json:"has_linkitin_auth"`
 	LiAt            string `json:"li_at,omitempty"`
@@ -129,23 +135,23 @@ type ConfigLinkedInResponse struct {
 }
 
 type ConfigGitHubResponse struct {
-	PersonalAccessToken string `json:"personal_access_token"`
-	DefaultOwner        string `json:"default_owner"`
-	DefaultRepo         string `json:"default_repo"`
+	HasPAT       bool   `json:"has_pat"`
+	HasOAuth     bool   `json:"has_oauth"`
+	HasAuth      bool   `json:"has_auth"`
+	DefaultOwner string `json:"default_owner"`
+	DefaultRepo  string `json:"default_repo"`
 }
 
 type ConfigYouTubeResponse struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	ChannelID    string `json:"channel_id"`
-	HasAuth      bool   `json:"has_auth"`
+	HasClientID bool   `json:"has_client_id"`
+	HasAuth     bool   `json:"has_auth"`
+	ChannelID   string `json:"channel_id"`
 }
 
 type ConfigTikTokResponse struct {
-	ClientKey    string `json:"client_key"`
-	ClientSecret string `json:"client_secret"`
-	Username     string `json:"username"`
+	HasClientKey bool   `json:"has_client_key"`
 	HasAuth      bool   `json:"has_auth"`
+	Username     string `json:"username"`
 }
 
 type VideoUploadResponse struct {

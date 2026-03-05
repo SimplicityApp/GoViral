@@ -78,15 +78,14 @@ type UpdateStatusRequest struct {
 }
 
 type UpdateConfigRequest struct {
-	Claude   *ClaudeConfigUpdate   `json:"claude,omitempty"`
-	Gemini   *GeminiConfigUpdate   `json:"gemini,omitempty"`
-	X        *XConfigUpdate        `json:"x,omitempty"`
-	LinkedIn *LinkedInConfigUpdate `json:"linkedin,omitempty"`
-	GitHub   *GitHubConfigUpdate   `json:"github,omitempty"`
-	YouTube  *YouTubeConfigUpdate  `json:"youtube,omitempty"`
-	TikTok   *TikTokConfigUpdate   `json:"tiktok,omitempty"`
-	Niches         *[]string `json:"niches,omitempty"`
-	LinkedInNiches *[]string `json:"linkedin_niches,omitempty"`
+	Claude         *ClaudeConfigUpdate   `json:"claude,omitempty"`
+	Gemini         *GeminiConfigUpdate   `json:"gemini,omitempty"`
+	X              *XConfigUpdate        `json:"x,omitempty"`
+	LinkedIn       *LinkedInConfigUpdate `json:"linkedin,omitempty"`
+	YouTube        *YouTubeConfigUpdate  `json:"youtube,omitempty"`
+	TikTok         *TikTokConfigUpdate   `json:"tiktok,omitempty"`
+	Niches         *[]string             `json:"niches,omitempty"`
+	LinkedInNiches *[]string             `json:"linkedin_niches,omitempty"`
 }
 
 type ClaudeConfigUpdate struct {
@@ -100,36 +99,19 @@ type GeminiConfigUpdate struct {
 }
 
 type XConfigUpdate struct {
-	APIKey       *string `json:"api_key,omitempty"`
-	APISecret    *string `json:"api_secret,omitempty"`
-	BearerToken  *string `json:"bearer_token,omitempty"`
-	ClientID     *string `json:"client_id,omitempty"`
-	ClientSecret *string `json:"client_secret,omitempty"`
-	Username     *string `json:"username,omitempty"`
+	Username *string `json:"username"`
 }
 
 type LinkedInConfigUpdate struct {
-	ClientID     *string `json:"client_id,omitempty"`
-	ClientSecret *string `json:"client_secret,omitempty"`
-	PersonURN    *string `json:"person_urn,omitempty"`
-}
-
-type GitHubConfigUpdate struct {
-	PersonalAccessToken *string `json:"personal_access_token,omitempty"`
-	DefaultOwner        *string `json:"default_owner,omitempty"`
-	DefaultRepo         *string `json:"default_repo,omitempty"`
+	PersonURN *string `json:"person_urn"`
 }
 
 type YouTubeConfigUpdate struct {
-	ClientID     *string `json:"client_id,omitempty"`
-	ClientSecret *string `json:"client_secret,omitempty"`
-	ChannelID    *string `json:"channel_id,omitempty"`
+	ChannelID *string `json:"channel_id"`
 }
 
 type TikTokConfigUpdate struct {
-	ClientKey    *string `json:"client_key,omitempty"`
-	ClientSecret *string `json:"client_secret,omitempty"`
-	Username     *string `json:"username,omitempty"`
+	Username *string `json:"username"`
 }
 
 // --- Daemon requests ---

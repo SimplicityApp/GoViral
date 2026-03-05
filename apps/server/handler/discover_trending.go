@@ -84,13 +84,15 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 		platforms = []string{req.Platform}
 	}
 
+	uc, _ := h.db.GetUserConfig(userID)
+
 	for _, p := range platforms {
 		var niches []string
 		switch p {
 		case "x":
-			niches = h.cfg.Niches
+			niches = uc.MergedNiches(*h.cfg)
 		case "linkedin":
-			niches = h.cfg.LinkedInNiches
+			niches = uc.MergedLinkedInNiches(*h.cfg)
 			if len(niches) == 0 {
 				niches = []string{"AI", "Programming", "Technology"}
 			}
@@ -114,10 +116,10 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 
 		switch p {
 		case "x":
-			client := x.NewFallbackClient(h.cfg.X)
+			client := x.NewFallbackClient(uc.MergedXConfig(*h.cfg))
 			posts, err = client.FetchTrendingPosts(ctx, niches, req.Period, req.MinLikes, req.Limit)
 		case "linkedin":
-			client := linkedin.NewFallbackClient(h.cfg.LinkedIn, nil)
+			client := linkedin.NewFallbackClient(uc.MergedLinkedInConfig(*h.cfg), nil)
 			posts, err = client.FetchTrendingPosts(ctx, niches, req.Period, req.MinLikes, req.Limit)
 		}
 

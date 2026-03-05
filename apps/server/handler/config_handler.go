@@ -9,74 +9,134 @@ import (
 	"github.com/shuhao/goviral/apps/server/dto"
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/internal/config"
+	"github.com/shuhao/goviral/internal/db"
 )
 
 // ConfigHandler handles requests for application config.
 type ConfigHandler struct {
 	cfg *config.Config
+	db  *db.DB
 }
 
 // NewConfigHandler creates a new ConfigHandler.
-func NewConfigHandler(cfg *config.Config) *ConfigHandler {
-	return &ConfigHandler{cfg: cfg}
+func NewConfigHandler(cfg *config.Config, database *db.DB) *ConfigHandler {
+	return &ConfigHandler{cfg: cfg, db: database}
 }
 
-// Get returns the current config with secrets masked.
+// Get returns the current config with secrets masked, merged with per-user overrides.
 func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+
+	uc, _ := h.db.GetUserConfig(userID)
+	if uc == nil {
+		uc = &config.UserConfig{}
+	}
+
+	claudeCfg := uc.ResolvedClaudeConfig(*h.cfg)
+	claudeUsed, _ := h.db.GetAIUsage(userID, "claude")
+
+	geminiCfg := uc.ResolvedGeminiConfig(*h.cfg)
+	geminiUsed, _ := h.db.GetAIUsage(userID, "gemini")
+
+	xUsername := h.cfg.X.Username
+	if uc.XUsername != "" {
+		xUsername = uc.XUsername
+	}
+
+	channelID := h.cfg.YouTube.ChannelID
+	if uc.YouTubeChannelID != "" {
+		channelID = uc.YouTubeChannelID
+	}
+
+	tiktokUsername := h.cfg.TikTok.Username
+	if uc.TikTokUsername != "" {
+		tiktokUsername = uc.TikTokUsername
+	}
+
+	hasTwikitAuth := uc.TwikitCookiesJSON != "" || twikitCookiesExist()
+	hasLinkitinAuth := uc.LinkitinCookiesJSON != "" || linkitinCookiesExist()
+
+	var authToken, ct0 string
+	if uc.TwikitCookiesJSON != "" {
+		authToken = maskedCookieFromJSON(uc.TwikitCookiesJSON, "auth_token")
+		ct0 = maskedCookieFromJSON(uc.TwikitCookiesJSON, "ct0")
+	} else {
+		authToken = maskedTwikitCookie("auth_token")
+		ct0 = maskedTwikitCookie("ct0")
+	}
+
+	var liAt, jsessionID string
+	if uc.LinkitinCookiesJSON != "" {
+		liAt = maskedCookieFromJSON(uc.LinkitinCookiesJSON, "li_at")
+		jsessionID = maskedCookieFromJSON(uc.LinkitinCookiesJSON, "JSESSIONID")
+	} else {
+		liAt = maskedLinkitinCookie("li_at")
+		jsessionID = maskedLinkitinCookie("JSESSIONID")
+	}
+
+	niches := uc.MergedNiches(*h.cfg)
+	linkedInNiches := uc.MergedLinkedInNiches(*h.cfg)
+	if niches == nil {
+		niches = []string{}
+	}
+	if linkedInNiches == nil {
+		linkedInNiches = []string{}
+	}
+
 	resp := dto.ConfigResponse{
 		Claude: dto.ConfigClaudeResponse{
-			APIKey: maskSecret(h.cfg.Claude.APIKey),
-			Model:  h.cfg.Claude.Model,
+			HasGlobalKey: h.cfg.Claude.APIKey != "",
+			UserAPIKey:   maskSecret(uc.ClaudeAPIKey),
+			Model:        claudeCfg.Model,
+			DailyLimit:   h.cfg.Claude.DailyLimit,
+			DailyUsed:    claudeUsed,
 		},
 		Gemini: dto.ConfigGeminiResponse{
-			APIKey: maskSecret(h.cfg.Gemini.APIKey),
-			Model:  h.cfg.Gemini.Model,
+			HasGlobalKey: h.cfg.Gemini.APIKey != "",
+			UserAPIKey:   maskSecret(uc.GeminiAPIKey),
+			Model:        geminiCfg.Model,
+			DailyLimit:   h.cfg.Gemini.DailyLimit,
+			DailyUsed:    geminiUsed,
 		},
 		X: dto.ConfigXResponse{
-			APIKey:        maskSecret(h.cfg.X.APIKey),
-			APISecret:     maskSecret(h.cfg.X.APISecret),
-			BearerToken:   maskSecret(h.cfg.X.BearerToken),
-			ClientID:      maskSecret(h.cfg.X.ClientID),
-			ClientSecret:  maskSecret(h.cfg.X.ClientSecret),
-			Username:      h.cfg.X.Username,
-			HasAuth:       h.cfg.X.AccessToken != "",
-			HasTwikitAuth: twikitCookiesExist(),
-			AuthToken:     maskedTwikitCookie("auth_token"),
-			Ct0:           maskedTwikitCookie("ct0"),
+			HasAPIKey:       h.cfg.X.APIKey != "",
+			HasAPISecret:    h.cfg.X.APISecret != "",
+			HasBearerToken:  h.cfg.X.BearerToken != "",
+			HasClientID:     h.cfg.X.ClientID != "",
+			HasClientSecret: h.cfg.X.ClientSecret != "",
+			Username:        xUsername,
+			HasAuth:         uc.XAccessToken != "",
+			HasTwikitAuth:   hasTwikitAuth,
+			AuthToken:       authToken,
+			Ct0:             ct0,
 		},
 		LinkedIn: dto.ConfigLinkedInResponse{
-			ClientID:        maskSecret(h.cfg.LinkedIn.ClientID),
-			ClientSecret:    maskSecret(h.cfg.LinkedIn.ClientSecret),
-			HasAuth:         h.cfg.LinkedIn.AccessToken != "",
-			HasLinkitinAuth: linkitinCookiesExist(),
-			LiAt:            maskedLinkitinCookie("li_at"),
-			JSessionID:      maskedLinkitinCookie("JSESSIONID"),
+			HasClientID:     h.cfg.LinkedIn.ClientID != "",
+			HasClientSecret: h.cfg.LinkedIn.ClientSecret != "",
+			HasAuth:         uc.LinkedInAccessToken != "",
+			HasLinkitinAuth: hasLinkitinAuth,
+			LiAt:            liAt,
+			JSessionID:      jsessionID,
 		},
 		GitHub: dto.ConfigGitHubResponse{
-			PersonalAccessToken: maskSecret(h.cfg.GitHub.PersonalAccessToken),
-			DefaultOwner:        h.cfg.GitHub.DefaultOwner,
-			DefaultRepo:         h.cfg.GitHub.DefaultRepo,
+			HasPAT:       h.cfg.GitHub.PersonalAccessToken != "",
+			HasOAuth:     h.cfg.GitHub.ClientID != "",
+			HasAuth:      uc.GitHubAccessToken != "" || h.cfg.GitHub.PersonalAccessToken != "",
+			DefaultOwner: h.cfg.GitHub.DefaultOwner,
+			DefaultRepo:  h.cfg.GitHub.DefaultRepo,
 		},
 		YouTube: dto.ConfigYouTubeResponse{
-			ClientID:     maskSecret(h.cfg.YouTube.ClientID),
-			ClientSecret: maskSecret(h.cfg.YouTube.ClientSecret),
-			ChannelID:    h.cfg.YouTube.ChannelID,
-			HasAuth:      h.cfg.YouTube.AccessToken != "",
+			HasClientID: h.cfg.YouTube.ClientID != "",
+			HasAuth:     uc.YouTubeAccessToken != "",
+			ChannelID:   channelID,
 		},
 		TikTok: dto.ConfigTikTokResponse{
-			ClientKey:    maskSecret(h.cfg.TikTok.ClientKey),
-			ClientSecret: maskSecret(h.cfg.TikTok.ClientSecret),
-			Username:     h.cfg.TikTok.Username,
-			HasAuth:      h.cfg.TikTok.AccessToken != "",
+			HasClientKey: h.cfg.TikTok.ClientKey != "",
+			HasAuth:      uc.TikTokAccessToken != "",
+			Username:     tiktokUsername,
 		},
-		Niches:         h.cfg.Niches,
-		LinkedInNiches: h.cfg.LinkedInNiches,
-	}
-	if resp.Niches == nil {
-		resp.Niches = []string{}
-	}
-	if resp.LinkedInNiches == nil {
-		resp.LinkedInNiches = []string{}
+		Niches:         niches,
+		LinkedInNiches: linkedInNiches,
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, resp)
@@ -121,6 +181,26 @@ func readCookieFile(path string) map[string]string {
 		}
 	}
 	return result
+}
+
+// maskedCookieFromJSON parses a JSON cookie string and returns the masked value for key.
+func maskedCookieFromJSON(cookiesJSON, key string) string {
+	if cookiesJSON == "" {
+		return ""
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(cookiesJSON), &raw); err != nil {
+		return ""
+	}
+	v, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return ""
+	}
+	return maskSecret(s)
 }
 
 func maskedTwikitCookie(key string) string {

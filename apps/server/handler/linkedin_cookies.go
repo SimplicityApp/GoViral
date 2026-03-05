@@ -8,17 +8,19 @@ import (
 
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/internal/config"
+	"github.com/shuhao/goviral/internal/db"
 	"github.com/shuhao/goviral/internal/platform/linkedin"
 )
 
 // LinkedInCookiesHandler manages LinkedIn linkitin cookie authentication.
 type LinkedInCookiesHandler struct {
 	cfg *config.Config
+	db  *db.DB
 }
 
 // NewLinkedInCookiesHandler creates a new LinkedInCookiesHandler.
-func NewLinkedInCookiesHandler(cfg *config.Config) *LinkedInCookiesHandler {
-	return &LinkedInCookiesHandler{cfg: cfg}
+func NewLinkedInCookiesHandler(cfg *config.Config, database *db.DB) *LinkedInCookiesHandler {
+	return &LinkedInCookiesHandler{cfg: cfg, db: database}
 }
 
 // ExtractCookies extracts LinkedIn session cookies from Chrome.
@@ -36,6 +38,14 @@ func (h *LinkedInCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.R
 			"error": "failed to extract cookies: " + err.Error(),
 		})
 		return
+	}
+
+	userID := middleware.UserIDFromContext(r.Context())
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
+	if data, err := os.ReadFile(cookiePath); err == nil {
+		uc, _ := h.db.GetUserConfig(userID)
+		uc.LinkitinCookiesJSON = string(data)
+		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -77,6 +87,14 @@ func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Req
 			"error": "failed to login with cookies: " + err.Error(),
 		})
 		return
+	}
+
+	userID := middleware.UserIDFromContext(r.Context())
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
+	if data, err := os.ReadFile(cookiePath); err == nil {
+		uc, _ := h.db.GetUserConfig(userID)
+		uc.LinkitinCookiesJSON = string(data)
+		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{

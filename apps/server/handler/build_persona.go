@@ -14,6 +14,7 @@ import (
 	"github.com/shuhao/goviral/internal/ai/persona"
 	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/internal/db"
+	"github.com/shuhao/goviral/internal/ratelimit"
 	"github.com/shuhao/goviral/pkg/models"
 )
 
@@ -77,9 +78,17 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platform string, progress chan<- dto.ProgressEvent) {
 	defer close(progress)
 
-	if h.cfg.Claude.APIKey == "" {
+	uc, _ := h.db.GetUserConfig(userID)
+	claudeCfg := uc.ResolvedClaudeConfig(*h.cfg)
+	if claudeCfg.APIKey == "" {
 		progress <- dto.ProgressEvent{Type: "error", Message: "Claude API key not configured"}
 		return
+	}
+	if !uc.UsingOwnClaudeKey() {
+		if err := ratelimit.CheckAIRateLimit(h.db, userID, "claude", h.cfg.Claude.DailyLimit); err != nil {
+			progress <- dto.ProgressEvent{Type: "error", Message: err.Error()}
+			return
+		}
 	}
 
 	progress <- dto.ProgressEvent{
@@ -110,7 +119,7 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platfo
 		Percentage: 30,
 	}
 
-	client := claude.NewClient(h.cfg.Claude.APIKey, h.cfg.Claude.Model)
+	client := claude.NewClient(claudeCfg.APIKey, claudeCfg.Model)
 	analyzer := persona.NewAnalyzer(client)
 
 	profile, err := analyzer.BuildProfile(ctx, posts, platform)
@@ -133,6 +142,10 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platfo
 	if err := h.db.UpsertPersona(userID, p); err != nil {
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("saving persona: %v", err)}
 		return
+	}
+
+	if !uc.UsingOwnClaudeKey() {
+		ratelimit.RecordAIUsage(h.db, userID, "claude")
 	}
 
 	progress <- dto.ProgressEvent{

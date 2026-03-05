@@ -10,6 +10,7 @@ import (
 	"github.com/shuhao/goviral/internal/ai/generator"
 	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/internal/db"
+	"github.com/shuhao/goviral/internal/ratelimit"
 	"github.com/shuhao/goviral/pkg/models"
 )
 
@@ -28,11 +29,18 @@ func NewGenerateService(database *db.DB, cfg *config.Config) *GenerateService {
 func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.GenerateRequest, progress chan<- dto.ProgressEvent) ([]models.GeneratedContent, error) {
 	defer close(progress)
 
-	if s.cfg.Claude.APIKey == "" {
+	uc, _ := s.db.GetUserConfig(userID)
+	claudeCfg := uc.ResolvedClaudeConfig(*s.cfg)
+	if claudeCfg.APIKey == "" {
 		return nil, fmt.Errorf("Claude API key not configured")
 	}
+	if !uc.UsingOwnClaudeKey() {
+		if err := ratelimit.CheckAIRateLimit(s.db, userID, "claude", s.cfg.Claude.DailyLimit); err != nil {
+			return nil, err
+		}
+	}
 
-	client := claude.NewClient(s.cfg.Claude.APIKey, s.cfg.Claude.Model)
+	client := claude.NewClient(claudeCfg.APIKey, claudeCfg.Model)
 	gen := generator.NewGenerator(client)
 
 	targetPlatform := req.TargetPlatform
@@ -86,7 +94,7 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 			TrendingPost:   *tp,
 			Persona:        *persona,
 			TargetPlatform: targetPlatform,
-			Niches:         s.cfg.Niches,
+			Niches:         uc.MergedNiches(*s.cfg),
 			Count:          count,
 			MaxChars:       maxChars,
 			IsRepost:       req.IsRepost,
@@ -155,6 +163,10 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 		}
 	}
 
+	if !uc.UsingOwnClaudeKey() {
+		ratelimit.RecordAIUsage(s.db, userID, "claude")
+	}
+
 	progress <- dto.ProgressEvent{
 		Type:       "complete",
 		Message:    fmt.Sprintf("Generated %d content items", len(allContent)),
@@ -166,8 +178,15 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 
 // GenerateComment creates comment variations for a trending post.
 func (s *GenerateService) GenerateComment(ctx context.Context, userID string, trendingPostID int64, platform string, count int) ([]models.GeneratedContent, error) {
-	if s.cfg.Claude.APIKey == "" {
+	uc, _ := s.db.GetUserConfig(userID)
+	claudeCfg := uc.ResolvedClaudeConfig(*s.cfg)
+	if claudeCfg.APIKey == "" {
 		return nil, fmt.Errorf("Claude API key not configured")
+	}
+	if !uc.UsingOwnClaudeKey() {
+		if err := ratelimit.CheckAIRateLimit(s.db, userID, "claude", s.cfg.Claude.DailyLimit); err != nil {
+			return nil, err
+		}
 	}
 
 	if platform == "" {
@@ -177,7 +196,7 @@ func (s *GenerateService) GenerateComment(ctx context.Context, userID string, tr
 		count = 3
 	}
 
-	client := claude.NewClient(s.cfg.Claude.APIKey, s.cfg.Claude.Model)
+	client := claude.NewClient(claudeCfg.APIKey, claudeCfg.Model)
 	gen := generator.NewGenerator(client)
 
 	tp, err := s.db.GetTrendingPostByID("",trendingPostID)
@@ -229,6 +248,10 @@ func (s *GenerateService) GenerateComment(ctx context.Context, userID string, tr
 		}
 		gc.ID = id
 		allContent = append(allContent, gc)
+	}
+
+	if !uc.UsingOwnClaudeKey() {
+		ratelimit.RecordAIUsage(s.db, userID, "claude")
 	}
 
 	return allContent, nil

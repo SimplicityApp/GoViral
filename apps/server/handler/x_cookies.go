@@ -8,22 +8,30 @@ import (
 
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/internal/config"
+	"github.com/shuhao/goviral/internal/db"
 	x "github.com/shuhao/goviral/internal/platform/x"
 )
 
 // XCookiesHandler manages X twikit cookie authentication.
 type XCookiesHandler struct {
 	cfg *config.Config
+	db  *db.DB
 }
 
 // NewXCookiesHandler creates a new XCookiesHandler.
-func NewXCookiesHandler(cfg *config.Config) *XCookiesHandler {
-	return &XCookiesHandler{cfg: cfg}
+func NewXCookiesHandler(cfg *config.Config, database *db.DB) *XCookiesHandler {
+	return &XCookiesHandler{cfg: cfg, db: database}
 }
 
 // ExtractCookies extracts X session cookies from Chrome.
 func (h *XCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.Request) {
-	tc, err := x.NewTwikitClient(h.cfg.X.Username)
+	userID := middleware.UserIDFromContext(r.Context())
+	username := h.cfg.X.Username
+	if uc, err := h.db.GetUserConfig(userID); err == nil && uc.XUsername != "" {
+		username = uc.XUsername
+	}
+
+	tc, err := x.NewTwikitClient(username)
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "twikit unavailable: " + err.Error(),
@@ -36,6 +44,13 @@ func (h *XCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.Request)
 			"error": "failed to extract cookies: " + err.Error(),
 		})
 		return
+	}
+
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
+	if data, err := os.ReadFile(cookiePath); err == nil {
+		uc, _ := h.db.GetUserConfig(userID)
+		uc.TwikitCookiesJSON = string(data)
+		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -64,7 +79,13 @@ func (h *XCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tc, err := x.NewTwikitClient(h.cfg.X.Username)
+	userID := middleware.UserIDFromContext(r.Context())
+	username := h.cfg.X.Username
+	if uc, err := h.db.GetUserConfig(userID); err == nil && uc.XUsername != "" {
+		username = uc.XUsername
+	}
+
+	tc, err := x.NewTwikitClient(username)
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "twikit unavailable: " + err.Error(),
@@ -77,6 +98,13 @@ func (h *XCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 			"error": "failed to save cookies: " + err.Error(),
 		})
 		return
+	}
+
+	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
+	if data, err := os.ReadFile(cookiePath); err == nil {
+		uc, _ := h.db.GetUserConfig(userID)
+		uc.TwikitCookiesJSON = string(data)
+		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{

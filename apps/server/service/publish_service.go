@@ -77,6 +77,9 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 		return nil, nil, fmt.Errorf("content %d targets %q, not x", contentID, gc.TargetPlatform)
 	}
 
+	uc, _ := s.db.GetUserConfig(userID)
+	xCfg := uc.MergedXConfig(*s.cfg)
+
 	// Comment path
 	if gc.IsComment {
 		commentID, err := s.CommentX(ctx, userID, contentID)
@@ -89,7 +92,7 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 	// Quote tweet path
 	if gc.IsRepost && gc.QuoteTweetID != "" {
 		log.Printf("publishing quote tweet for content %d (quoting %s)", contentID, gc.QuoteTweetID)
-		quotePoster := newXQuotePoster(s.cfg.X)
+		quotePoster := newXQuotePoster(xCfg)
 		postID, err := quotePoster.PostQuoteTweet(ctx, gc.GeneratedContent, gc.QuoteTweetID)
 		if err != nil {
 			log.Printf("quote tweet publish failed for content %d: %v", contentID, err)
@@ -104,7 +107,7 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 	result := thread.Split(gc.GeneratedContent, numbered)
 	parts := result.Parts
 
-	poster := newXPoster(s.cfg.X)
+	poster := newXPoster(xCfg)
 
 	// If the content has a code image, attempt to post the first tweet with the image
 	// attached. Subsequent thread parts are posted as plain text.
@@ -170,6 +173,9 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 		return nil, nil, fmt.Errorf("content %d targets %q, not linkedin", contentID, gc.TargetPlatform)
 	}
 
+	uc, _ := s.db.GetUserConfig(userID)
+	linkedInCfg := uc.MergedLinkedInConfig(*s.cfg)
+
 	// Comment path
 	if gc.IsComment {
 		commentID, err := s.CommentLinkedIn(ctx, userID, contentID)
@@ -182,7 +188,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 	// Repost path
 	if gc.IsRepost && gc.QuoteTweetID != "" {
 		log.Printf("publishing LinkedIn repost for content %d (quoting %s)", contentID, gc.QuoteTweetID)
-		reposter := newLinkedInReposter(s.cfg.LinkedIn)
+		reposter := newLinkedInReposter(linkedInCfg)
 		postID, err := reposter.Repost(ctx, gc.QuoteTweetID, gc.GeneratedContent)
 		if err != nil {
 			log.Printf("LinkedIn repost failed for content %d: %v", contentID, err)
@@ -194,7 +200,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 		return []string{postID}, []string{gc.GeneratedContent}, nil
 	}
 
-	poster := newLinkedInPoster(s.cfg.LinkedIn)
+	poster := newLinkedInPoster(linkedInCfg)
 
 	// If the content has a code image, post with it attached.
 	if gc.SourceType == "commit" && gc.CodeImagePath != "" {
@@ -266,7 +272,8 @@ func (s *PublishService) CommentLinkedIn(ctx context.Context, userID string, con
 		}
 	}
 
-	commenter := newLinkedInCommenter(s.cfg.LinkedIn)
+	uc, _ := s.db.GetUserConfig(userID)
+	commenter := newLinkedInCommenter(uc.MergedLinkedInConfig(*s.cfg))
 	commentURN, err := commenter.CreateComment(ctx, gc.QuoteTweetID, threadURN, gc.GeneratedContent)
 	if err != nil {
 		slog.Error("linkedin comment failed", "content_id", contentID, "post_urn", gc.QuoteTweetID, "error", err)
@@ -299,7 +306,8 @@ func (s *PublishService) CommentX(ctx context.Context, userID string, contentID 
 		return "", fmt.Errorf("content %d already posted", contentID)
 	}
 
-	poster := newXPoster(s.cfg.X)
+	uc, _ := s.db.GetUserConfig(userID)
+	poster := newXPoster(uc.MergedXConfig(*s.cfg))
 	replyID, err := poster.PostReply(ctx, gc.GeneratedContent, gc.QuoteTweetID)
 	if err != nil {
 		slog.Error("x comment (reply) failed", "content_id", contentID, "tweet_id", gc.QuoteTweetID, "error", err)
@@ -344,19 +352,21 @@ func (s *PublishService) Schedule(ctx context.Context, userID string, contentID 
 		return "", fmt.Errorf("content %d not found", contentID)
 	}
 
+	uc, _ := s.db.GetUserConfig(userID)
+
 	switch gc.TargetPlatform {
 	case "x":
 		if gc.IsRepost && gc.QuoteTweetID != "" {
-			quoteScheduler := newXQuoteScheduler(s.cfg.X)
+			quoteScheduler := newXQuoteScheduler(uc.MergedXConfig(*s.cfg))
 			return quoteScheduler.ScheduleQuoteTweet(ctx, gc.GeneratedContent, gc.QuoteTweetID, scheduledAt.Unix())
 		}
-		scheduler := newXScheduler(s.cfg.X)
+		scheduler := newXScheduler(uc.MergedXConfig(*s.cfg))
 		return scheduler.ScheduleTweet(ctx, gc.GeneratedContent, scheduledAt.Unix())
 	case "linkedin":
 		if gc.IsRepost {
 			return "", fmt.Errorf("native scheduling not supported for LinkedIn reposts: content %d will be executed via RunDue", contentID)
 		}
-		linkedInPoster := newLinkedInPoster(s.cfg.LinkedIn)
+		linkedInPoster := newLinkedInPoster(uc.MergedLinkedInConfig(*s.cfg))
 		// Commit posts store their image in CodeImagePath; regular AI-image posts use ImagePath.
 		imagePath := gc.ImagePath
 		if gc.SourceType == "commit" && gc.CodeImagePath != "" {
@@ -402,7 +412,8 @@ func (s *PublishService) PublishYouTube(ctx context.Context, userID string, cont
 		return nil, nil, fmt.Errorf("video file not found at %s: %w", gc.VideoPath, err)
 	}
 
-	poster := newYouTubePoster(s.cfg.YouTube)
+	uc, _ := s.db.GetUserConfig(userID)
+	poster := newYouTubePoster(uc.MergedYouTubeConfig(*s.cfg))
 
 	title := gc.VideoTitle
 	if title == "" {
@@ -453,7 +464,8 @@ func (s *PublishService) PublishTikTok(ctx context.Context, userID string, conte
 		return nil, nil, fmt.Errorf("video file not found at %s: %w", gc.VideoPath, err)
 	}
 
-	poster := newTikTokPoster(s.cfg.TikTok)
+	uc, _ := s.db.GetUserConfig(userID)
+	poster := newTikTokPoster(uc.MergedTikTokConfig(*s.cfg))
 
 	videoID, err := poster.UploadVideo(ctx, gc.VideoPath, gc.GeneratedContent, nil)
 	if err != nil {

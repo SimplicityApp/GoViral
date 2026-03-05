@@ -38,6 +38,9 @@ func main() {
 	}
 	defer database.Close()
 
+	// One-time migration: populate user_config from config.yaml for the default user
+	migrateUserConfig(database, cfg)
+
 	srv := NewServer(cfg, database)
 
 	// Create daemon with adapter functions
@@ -135,7 +138,7 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	generateSvc := service.NewGenerateService(s.DB, s.Cfg)
 	opStore := service.NewOperationStore(30 * time.Minute)
 	repoSvc := service.NewRepoService(s.DB, s.Cfg)
-	repoH := handler.NewRepoHandler(repoSvc, opStore)
+	repoH := handler.NewRepoHandler(repoSvc, opStore, s.Cfg, s.DB)
 
 	// Read handlers
 	healthH := handler.NewHealthHandler(s.Cfg)
@@ -144,13 +147,13 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	personaH := handler.NewPersonaHandler(personaSvc)
 	historyH := handler.NewHistoryHandler(s.DB)
 	scheduleH := handler.NewScheduleHandler(scheduleSvc, s.DB)
-	configH := handler.NewConfigHandler(s.Cfg)
+	configH := handler.NewConfigHandler(s.Cfg, s.DB)
 
 	// Write handlers
 	publishH := handler.NewPublishHandler(publishSvc)
 	scheduleWriteH := handler.NewScheduleWriteHandler(s.DB, publishSvc)
 	historyWriteH := handler.NewHistoryWriteHandler(s.DB)
-	configWriteH := handler.NewConfigWriteHandler(s.Cfg)
+	configWriteH := handler.NewConfigWriteHandler(s.Cfg, s.DB)
 
 	// Long-running operation handlers
 	operationsH := handler.NewOperationsHandler(opStore)
@@ -167,14 +170,14 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	commentH := handler.NewCommentHandler(publishSvc, generateSvc, s.DB)
 
 	// Cookie management handlers
-	xCookiesH := handler.NewXCookiesHandler(s.Cfg)
-	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg)
+	xCookiesH := handler.NewXCookiesHandler(s.Cfg, s.DB)
+	linkedinCookiesH := handler.NewLinkedInCookiesHandler(s.Cfg, s.DB)
 
 	// Extension download handler
 	extensionH := handler.NewExtensionHandler(extensionFS())
 
 	// Auth handler
-	authH := handler.NewAuthHandler(s.Cfg)
+	authH := handler.NewAuthHandler(s.Cfg, s.DB)
 
 	// Daemon handler
 	daemonH := handler.NewDaemonHandler(d, s.DB, s.Cfg)
@@ -186,6 +189,7 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 	}
 
 	// Public (unauthenticated) endpoints
+	s.Router.Get("/api/v1/auth/callback", authH.Callback)
 	s.Router.Get("/api/v1/extension/download", extensionH.Download)
 
 	s.Router.Route("/api/v1", func(r chi.Router) {
@@ -298,6 +302,55 @@ func setupRoutes(s *Server, d *daemon.Daemon) {
 
 	// Static file serving (SPA fallback)
 	s.Router.Handle("/*", staticHandler())
+}
+
+// migrateUserConfig performs a one-time migration of per-user fields from config.yaml
+// into the user_config DB table for the default user (empty user ID).
+func migrateUserConfig(database *db.DB, cfg *config.Config) {
+	uc, err := database.GetUserConfig("")
+	if err != nil {
+		slog.Error("checking user_config migration", "error", err)
+		return
+	}
+	// If the default user already has any data, skip migration
+	if uc.XUsername != "" || uc.XAccessToken != "" || uc.LinkedInAccessToken != "" || len(uc.Niches) > 0 {
+		return
+	}
+
+	// Migrate per-user fields from global config
+	uc.XUsername = cfg.X.Username
+	uc.XAccessToken = cfg.X.AccessToken
+	uc.XAccessTokenSecret = cfg.X.AccessTokenSecret
+	uc.XRefreshToken = cfg.X.RefreshToken
+	uc.XTokenExpiry = cfg.X.TokenExpiry
+	uc.LinkedInAccessToken = cfg.LinkedIn.AccessToken
+	uc.LinkedInPersonURN = cfg.LinkedIn.PersonURN
+	uc.YouTubeAccessToken = cfg.YouTube.AccessToken
+	uc.YouTubeRefreshToken = cfg.YouTube.RefreshToken
+	uc.YouTubeTokenExpiry = cfg.YouTube.TokenExpiry
+	uc.YouTubeChannelID = cfg.YouTube.ChannelID
+	uc.TikTokAccessToken = cfg.TikTok.AccessToken
+	uc.TikTokRefreshToken = cfg.TikTok.RefreshToken
+	uc.TikTokTokenExpiry = cfg.TikTok.TokenExpiry
+	uc.TikTokUsername = cfg.TikTok.Username
+	uc.Niches = cfg.Niches
+	uc.LinkedInNiches = cfg.LinkedInNiches
+
+	// Migrate cookie files if they exist
+	twikitPath := fmt.Sprintf("%s/twikit_cookies.json", config.DefaultConfigDir())
+	if data, err := os.ReadFile(twikitPath); err == nil {
+		uc.TwikitCookiesJSON = string(data)
+	}
+	linkitinPath := fmt.Sprintf("%s/linkitin_cookies.json", config.DefaultConfigDir())
+	if data, err := os.ReadFile(linkitinPath); err == nil {
+		uc.LinkitinCookiesJSON = string(data)
+	}
+
+	if err := database.SaveUserConfig("", uc); err != nil {
+		slog.Error("migrating user config", "error", err)
+	} else {
+		slog.Info("migrated per-user config from config.yaml to database")
+	}
 }
 
 // --- Daemon adapter functions ---

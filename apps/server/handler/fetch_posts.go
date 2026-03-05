@@ -77,6 +77,8 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 		platforms = []string{platform}
 	}
 
+	uc, _ := h.db.GetUserConfig(userID)
+
 	for _, p := range platforms {
 		progress <- dto.ProgressEvent{
 			Type:       "progress",
@@ -89,10 +91,10 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 
 		switch p {
 		case "x":
-			client := x.NewFallbackClient(h.cfg.X)
+			client := x.NewFallbackClient(uc.MergedXConfig(*h.cfg))
 			posts, err = client.FetchMyPosts(ctx, 100)
 		case "linkedin":
-			client := linkedin.NewFallbackClient(h.cfg.LinkedIn, nil)
+			client := linkedin.NewFallbackClient(uc.MergedLinkedInConfig(*h.cfg), nil)
 			posts, err = client.FetchMyPosts(ctx, 100)
 		default:
 			progress <- dto.ProgressEvent{

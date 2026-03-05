@@ -12,6 +12,8 @@ import (
 	"github.com/shuhao/goviral/apps/server/middleware"
 	"github.com/shuhao/goviral/apps/server/service"
 	"github.com/shuhao/goviral/internal/codeimg"
+	"github.com/shuhao/goviral/internal/config"
+	"github.com/shuhao/goviral/internal/db"
 	"github.com/shuhao/goviral/pkg/models"
 )
 
@@ -19,16 +21,29 @@ import (
 type RepoHandler struct {
 	svc     *service.RepoService
 	opStore *service.OperationStore
+	cfg     *config.Config
+	db      *db.DB
 }
 
 // NewRepoHandler creates a new RepoHandler.
-func NewRepoHandler(svc *service.RepoService, opStore *service.OperationStore) *RepoHandler {
-	return &RepoHandler{svc: svc, opStore: opStore}
+func NewRepoHandler(svc *service.RepoService, opStore *service.OperationStore, cfg *config.Config, database *db.DB) *RepoHandler {
+	return &RepoHandler{svc: svc, opStore: opStore, cfg: cfg, db: database}
+}
+
+// resolveGitHubToken loads the user config and returns the merged GitHub token.
+func (h *RepoHandler) resolveGitHubToken(userID string) string {
+	uc, _ := h.db.GetUserConfig(userID)
+	if uc == nil {
+		return h.cfg.GitHub.PersonalAccessToken
+	}
+	return uc.MergedGitHubToken(*h.cfg)
 }
 
 // ListAvailableRepos returns all GitHub repos accessible to the authenticated user.
 func (h *RepoHandler) ListAvailableRepos(w http.ResponseWriter, r *http.Request) {
-	repos, err := h.svc.ListAvailableRepos(r.Context())
+	userID := middleware.UserIDFromContext(r.Context())
+	token := h.resolveGitHubToken(userID)
+	repos, err := h.svc.ListAvailableRepos(r.Context(), token)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -90,7 +105,8 @@ func (h *RepoHandler) AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := h.svc.AddRepo(r.Context(), userID, req.Owner, req.Name)
+	token := h.resolveGitHubToken(userID)
+	repo, err := h.svc.AddRepo(r.Context(), userID, req.Owner, req.Name, token)
 	if err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())
 		middleware.WriteError(w, http.StatusInternalServerError, dto.ErrCodeInternal, err.Error(), reqID)
@@ -166,6 +182,7 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := middleware.UserIDFromContext(r.Context())
+	token := h.resolveGitHubToken(userID)
 
 	if WantsSSE(r) {
 		svcProgress := make(chan dto.ProgressEvent, 10)
@@ -178,7 +195,7 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				result, fetchErr = h.svc.FetchCommits(r.Context(), userID, repoID, req.Limit, req.Since, svcProgress)
+				result, fetchErr = h.svc.FetchCommits(r.Context(), userID, repoID, req.Limit, req.Since, token, svcProgress)
 			}()
 
 			// Forward service events to the client in real-time
@@ -215,7 +232,7 @@ func (h *RepoHandler) FetchCommits(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
 		go func() {
-			result, err := h.svc.FetchCommits(context.Background(), userID, repoID, req.Limit, req.Since, progress)
+			result, err := h.svc.FetchCommits(context.Background(), userID, repoID, req.Limit, req.Since, token, progress)
 			if err != nil {
 				h.opStore.Fail(opID, err.Error())
 				return
