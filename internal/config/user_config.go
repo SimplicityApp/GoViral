@@ -47,77 +47,67 @@ type UserConfig struct {
 	SelfDescription string `json:"self_description,omitempty"`
 }
 
-// MergedXConfig returns an XConfig starting from global app credentials,
-// then overriding with the user's per-user fields where non-empty.
+// MergedXConfig returns an XConfig with app-level credentials from global config
+// and user-level credentials exclusively from the per-user config.
+// This prevents new users from inheriting the server operator's identity.
 func (uc *UserConfig) MergedXConfig(global Config) XConfig {
-	cfg := global.X
-	if uc.XUsername != "" {
-		cfg.Username = uc.XUsername
+	return XConfig{
+		// App-level: from global config
+		APIKey:       global.X.APIKey,
+		APISecret:    global.X.APISecret,
+		BearerToken:  global.X.BearerToken,
+		ClientID:     global.X.ClientID,
+		ClientSecret: global.X.ClientSecret,
+		// User-level: from per-user config only (never global)
+		AccessToken:       uc.XAccessToken,
+		AccessTokenSecret: uc.XAccessTokenSecret,
+		RefreshToken:      uc.XRefreshToken,
+		TokenExpiry:       uc.XTokenExpiry,
+		Username:          uc.XUsername,
 	}
-	if uc.XAccessToken != "" {
-		cfg.AccessToken = uc.XAccessToken
-	}
-	if uc.XAccessTokenSecret != "" {
-		cfg.AccessTokenSecret = uc.XAccessTokenSecret
-	}
-	if uc.XRefreshToken != "" {
-		cfg.RefreshToken = uc.XRefreshToken
-	}
-	if uc.XTokenExpiry != "" {
-		cfg.TokenExpiry = uc.XTokenExpiry
-	}
-	return cfg
 }
 
-// MergedLinkedInConfig returns a LinkedInConfig starting from global app credentials,
-// then overriding with user's per-user fields where non-empty.
+// MergedLinkedInConfig returns a LinkedInConfig with app-level credentials from global config
+// and user-level credentials exclusively from the per-user config.
 func (uc *UserConfig) MergedLinkedInConfig(global Config) LinkedInConfig {
-	cfg := global.LinkedIn
-	if uc.LinkedInAccessToken != "" {
-		cfg.AccessToken = uc.LinkedInAccessToken
+	return LinkedInConfig{
+		// App-level: from global config
+		ClientID:     global.LinkedIn.ClientID,
+		ClientSecret: global.LinkedIn.ClientSecret,
+		// User-level: from per-user config only
+		AccessToken: uc.LinkedInAccessToken,
+		PersonURN:   uc.LinkedInPersonURN,
 	}
-	if uc.LinkedInPersonURN != "" {
-		cfg.PersonURN = uc.LinkedInPersonURN
-	}
-	return cfg
 }
 
-// MergedYouTubeConfig returns a YouTubeConfig starting from global app credentials,
-// then overriding with user's per-user fields where non-empty.
+// MergedYouTubeConfig returns a YouTubeConfig with app-level credentials from global config
+// and user-level credentials exclusively from the per-user config.
 func (uc *UserConfig) MergedYouTubeConfig(global Config) YouTubeConfig {
-	cfg := global.YouTube
-	if uc.YouTubeAccessToken != "" {
-		cfg.AccessToken = uc.YouTubeAccessToken
+	return YouTubeConfig{
+		// App-level: from global config
+		ClientID:     global.YouTube.ClientID,
+		ClientSecret: global.YouTube.ClientSecret,
+		// User-level: from per-user config only
+		AccessToken:  uc.YouTubeAccessToken,
+		RefreshToken: uc.YouTubeRefreshToken,
+		TokenExpiry:  uc.YouTubeTokenExpiry,
+		ChannelID:    uc.YouTubeChannelID,
 	}
-	if uc.YouTubeRefreshToken != "" {
-		cfg.RefreshToken = uc.YouTubeRefreshToken
-	}
-	if uc.YouTubeTokenExpiry != "" {
-		cfg.TokenExpiry = uc.YouTubeTokenExpiry
-	}
-	if uc.YouTubeChannelID != "" {
-		cfg.ChannelID = uc.YouTubeChannelID
-	}
-	return cfg
 }
 
-// MergedTikTokConfig returns a TikTokConfig starting from global app credentials,
-// then overriding with user's per-user fields where non-empty.
+// MergedTikTokConfig returns a TikTokConfig with app-level credentials from global config
+// and user-level credentials exclusively from the per-user config.
 func (uc *UserConfig) MergedTikTokConfig(global Config) TikTokConfig {
-	cfg := global.TikTok
-	if uc.TikTokAccessToken != "" {
-		cfg.AccessToken = uc.TikTokAccessToken
+	return TikTokConfig{
+		// App-level: from global config
+		ClientKey:    global.TikTok.ClientKey,
+		ClientSecret: global.TikTok.ClientSecret,
+		// User-level: from per-user config only
+		AccessToken:  uc.TikTokAccessToken,
+		RefreshToken: uc.TikTokRefreshToken,
+		TokenExpiry:  uc.TikTokTokenExpiry,
+		Username:     uc.TikTokUsername,
 	}
-	if uc.TikTokRefreshToken != "" {
-		cfg.RefreshToken = uc.TikTokRefreshToken
-	}
-	if uc.TikTokTokenExpiry != "" {
-		cfg.TokenExpiry = uc.TikTokTokenExpiry
-	}
-	if uc.TikTokUsername != "" {
-		cfg.Username = uc.TikTokUsername
-	}
-	return cfg
 }
 
 // ResolvedClaudeConfig returns the effective ClaudeConfig for this user.
@@ -164,12 +154,9 @@ func (uc *UserConfig) UsingOwnGeminiKey() bool {
 	return uc.GeminiAPIKey != ""
 }
 
-// MergedGitHubToken returns the user's OAuth token if set, otherwise falls back to the global PAT.
+// MergedGitHubToken returns the user's OAuth token. No global fallback to prevent credential leaking.
 func (uc *UserConfig) MergedGitHubToken(global Config) string {
-	if uc.GitHubAccessToken != "" {
-		return uc.GitHubAccessToken
-	}
-	return global.GitHub.PersonalAccessToken
+	return uc.GitHubAccessToken
 }
 
 // MergedNiches returns the user's X/Twitter niches if set, otherwise falls back to global niches.
