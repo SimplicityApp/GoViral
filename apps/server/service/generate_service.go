@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/shuhao/goviral/apps/server/dto"
 	"github.com/shuhao/goviral/internal/ai/claude"
+	"github.com/shuhao/goviral/internal/ai/gemini"
 	"github.com/shuhao/goviral/internal/ai/generator"
 	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/internal/db"
@@ -156,6 +158,62 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 				}
 			}
 			gc.ImagePrompt = imagePrompt
+
+			// Generate actual image via Gemini if we have a prompt
+			if imagePrompt != "" {
+				geminiCfg := uc.ResolvedGeminiConfig(*s.cfg)
+				canGenerate := geminiCfg.APIKey != ""
+				if !canGenerate {
+					slog.Warn("image prompt generated but no Gemini API key configured, skipping image generation")
+					progress <- dto.ProgressEvent{
+						Type:    "warning",
+						Message: "Gemini API key not configured — skipping image generation",
+					}
+				} else if !uc.UsingOwnGeminiKey() {
+					if rlErr := ratelimit.CheckAIRateLimit(s.db, userID, "gemini", s.cfg.Gemini.DailyLimit); rlErr != nil {
+						slog.Warn("gemini rate limit reached, skipping image generation", "error", rlErr)
+						progress <- dto.ProgressEvent{
+							Type:    "warning",
+							Message: fmt.Sprintf("Gemini daily limit reached — skipping image generation: %v", rlErr),
+						}
+						canGenerate = false
+					}
+				}
+				if canGenerate {
+					progress <- dto.ProgressEvent{
+						Type:    "progress",
+						Message: "Generating image via Gemini...",
+					}
+					geminiClient := gemini.NewClient(geminiCfg.APIKey, geminiCfg.Model)
+					img, err := geminiClient.GenerateImage(ctx, imagePrompt)
+					if err != nil {
+						slog.Error("generating image via Gemini", "error", err)
+						progress <- dto.ProgressEvent{
+							Type:    "warning",
+							Message: fmt.Sprintf("Gemini image generation failed: %v", err),
+						}
+					} else {
+						name := fmt.Sprintf("gen_%d_%d_%d", tp.ID, i+1, time.Now().Unix())
+						path, err := gemini.SaveImage(img, name)
+						if err != nil {
+							slog.Error("saving generated image", "error", err)
+							progress <- dto.ProgressEvent{
+								Type:    "warning",
+								Message: fmt.Sprintf("Failed to save generated image: %v", err),
+							}
+						} else {
+							gc.ImagePath = path
+							progress <- dto.ProgressEvent{
+								Type:    "progress",
+								Message: fmt.Sprintf("Image generated and saved: %s", path),
+							}
+							if !uc.UsingOwnGeminiKey() {
+								ratelimit.RecordAIUsage(s.db, userID, "gemini")
+							}
+						}
+					}
+				}
+			}
 
 			id, err := s.db.InsertGeneratedContent(userID, &gc)
 			if err != nil {

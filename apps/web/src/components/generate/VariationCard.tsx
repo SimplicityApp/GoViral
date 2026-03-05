@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
-import { BASE_URL } from '@/lib/api'
+import { BASE_URL, getUserID } from '@/lib/api'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { Check, X, Pencil, Send } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -23,7 +23,7 @@ function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId
       ? `${BASE_URL}/content/${contentId}/code-image`
       : `${BASE_URL}/repos/commits/${commitId}/image`
 
-    fetch(url)
+    fetch(url, { headers: { 'X-User-ID': getUserID() } })
       .then((res) => {
         if (!res.ok) throw new Error('failed')
         return res.blob()
@@ -52,6 +52,48 @@ function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId
         <img
           src={blobUrl}
           alt="Code diff"
+          className="w-full rounded-lg border border-[var(--color-border)]"
+        />
+      )}
+    </div>
+  )
+}
+
+function AIImagePreview({ contentId }: { contentId: number }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [errored, setErrored] = useState(false)
+
+  useEffect(() => {
+    const url = `${BASE_URL}/content/${contentId}/image`
+    fetch(url, { headers: { 'X-User-ID': getUserID() } })
+      .then((res) => {
+        if (!res.ok) throw new Error('failed')
+        return res.blob()
+      })
+      .then((blob) => {
+        setBlobUrl(URL.createObjectURL(blob))
+      })
+      .catch(() => setErrored(true))
+
+    return () => {
+      setBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+    }
+  }, [contentId])
+
+  if (errored) return null
+
+  return (
+    <div className="mb-4">
+      {!blobUrl && (
+        <div className="h-32 animate-pulse rounded-lg bg-[var(--color-border)]" />
+      )}
+      {blobUrl && (
+        <img
+          src={blobUrl}
+          alt="AI-generated image"
           className="w-full rounded-lg border border-[var(--color-border)]"
         />
       )}
@@ -144,6 +186,10 @@ export function VariationCard({ content, onApprove, onReject, onEdit }: Variatio
             </p>
           )}
         </>
+      )}
+
+      {content.image_path && content.source_type !== 'commit' && (
+        <AIImagePreview contentId={content.id} />
       )}
 
       {!editing && content.status === 'draft' && (

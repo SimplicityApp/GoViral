@@ -14,7 +14,7 @@ class ApiError extends Error {
   }
 }
 
-function getUserID(): string {
+export function getUserID(): string {
   let uid = localStorage.getItem('goviral_user_id')
   if (!uid) {
     uid = crypto.randomUUID()

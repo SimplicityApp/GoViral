@@ -29,7 +29,7 @@ export function useSSEMutation<T>(path: string, options?: SSEMutationOptions) {
       setState({ progress: null, isRunning: true, result: null, error: null })
 
       const { cancel } = apiClient.sse(path, body, (event) => {
-        if (event.type === 'progress') {
+        if (event.type === 'progress' || event.type === 'warning') {
           setState((prev) => ({ ...prev, progress: event }))
         } else if (event.type === 'complete') {
           setState({

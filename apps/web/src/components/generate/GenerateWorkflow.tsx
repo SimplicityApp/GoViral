@@ -284,8 +284,8 @@ export function GenerateWorkflow() {
           </h3>
           {activeProgress && (
             <>
-              <p className="mb-4 text-sm text-[var(--color-text-secondary)]">
-                {activeProgress.message}
+              <p className={`mb-4 text-sm ${activeProgress.type === 'warning' ? 'text-amber-400' : 'text-[var(--color-text-secondary)]'}`}>
+                {activeProgress.type === 'warning' ? `⚠ ${activeProgress.message}` : activeProgress.message}
               </p>
               <div className="h-2 w-64 rounded-full bg-[var(--color-border)]">
                 <div

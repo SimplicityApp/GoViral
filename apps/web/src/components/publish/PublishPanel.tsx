@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
-import { BASE_URL } from '@/lib/api'
+import { BASE_URL, getUserID } from '@/lib/api'
 import { usePlatformParam } from '@/hooks/usePlatformParam'
 import { usePublishMutation, useScheduleMutation } from '@/hooks/usePublish'
 import { useUpdateContentMutation, useDeleteContentMutation } from '@/hooks/useHistory'
@@ -15,7 +15,7 @@ function AttachedImagePreview({ url }: { url: string }) {
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
-    fetch(url)
+    fetch(url, { headers: { 'X-User-ID': getUserID() } })
       .then((res) => {
         if (!res.ok) throw new Error('failed')
         return res.blob()

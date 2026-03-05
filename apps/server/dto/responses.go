@@ -224,7 +224,7 @@ type OperationResponse struct {
 }
 
 type ProgressEvent struct {
-	Type       string      `json:"type"` // "progress", "complete", "error"
+	Type       string      `json:"type"` // "progress", "complete", "error", "warning"
 	Message    string      `json:"message"`
 	Percentage int         `json:"percentage"`
 	Data       interface{} `json:"data,omitempty"`

@@ -111,17 +111,21 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 
 	poster := newXPoster(xCfg, cookiePath)
 
-	// If the content has a code image, attempt to post the first tweet with the image
-	// attached. Subsequent thread parts are posted as plain text.
+	// If the content has an image (AI-generated or code image), attempt to post the first tweet
+	// with the image attached. Subsequent thread parts are posted as plain text.
+	imagePath := gc.ImagePath
 	if gc.SourceType == "commit" && gc.CodeImagePath != "" {
+		imagePath = gc.CodeImagePath
+	}
+	if imagePath != "" {
 		if mediaPoster, ok := poster.(models.MediaPoster); ok {
-			imageData, err := readImageFile(gc.CodeImagePath)
+			imageData, err := readImageFile(imagePath)
 			if err != nil {
-				log.Printf("failed to read code image %s for content %d: %v; posting without image", gc.CodeImagePath, contentID, err)
+				log.Printf("failed to read image %s for content %d: %v; posting without image", imagePath, contentID, err)
 			} else {
 				mediaID, err := mediaPoster.UploadMedia(ctx, imageData, "image/png")
 				if err != nil {
-					log.Printf("failed to upload code image for content %d: %v; posting without image", contentID, err)
+					log.Printf("failed to upload image for content %d: %v; posting without image", contentID, err)
 				} else {
 					// Post the first part with the media attached, then thread the rest normally
 					firstID, err := mediaPoster.PostTweetWithMedia(ctx, parts[0], []string{mediaID})
@@ -206,13 +210,17 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 
 	poster := newLinkedInPoster(linkedInCfg, configDir)
 
-	// If the content has a code image, post with it attached.
+	// If the content has an image (AI-generated or code image), post with it attached.
+	liImagePath := gc.ImagePath
 	if gc.SourceType == "commit" && gc.CodeImagePath != "" {
-		imageData, err := readImageFile(gc.CodeImagePath)
+		liImagePath = gc.CodeImagePath
+	}
+	if liImagePath != "" {
+		imageData, err := readImageFile(liImagePath)
 		if err != nil {
-			log.Printf("failed to read code image %s for content %d: %v; posting without image", gc.CodeImagePath, contentID, err)
+			log.Printf("failed to read image %s for content %d: %v; posting without image", liImagePath, contentID, err)
 		} else {
-			filename := filepath.Base(gc.CodeImagePath)
+			filename := filepath.Base(liImagePath)
 			postID, err := poster.CreatePostWithImage(ctx, gc.GeneratedContent, imageData, filename)
 			if err != nil {
 				log.Printf("failed to post LinkedIn content with image for content %d: %v; falling back to plain post", contentID, err)

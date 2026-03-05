@@ -102,7 +102,7 @@ export interface ScheduledPost {
 }
 
 export interface ProgressEvent {
-  type: 'progress' | 'complete' | 'error'
+  type: 'progress' | 'complete' | 'error' | 'warning'
   message: string
   percentage: number
   data?: unknown
