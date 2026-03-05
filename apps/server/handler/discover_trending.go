@@ -92,7 +92,32 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 	linkitinConfigDir, linkitinCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
 	defer linkitinCleanup()
 
+	var errCount int
 	for _, p := range platforms {
+		// Pre-flight credential check: fail fast if no credentials are configured.
+		switch p {
+		case "x":
+			xCfg := uc.MergedXConfig(*h.cfg)
+			if xCfg.BearerToken == "" && xCfg.Username == "" && uc.TwikitCookiesJSON == "" {
+				progress <- dto.ProgressEvent{
+					Type:    "error",
+					Message: "X is not connected — install the GoViral browser extension to sync cookies, or paste your X cookies manually in Settings",
+				}
+				errCount++
+				continue
+			}
+		case "linkedin":
+			liCfg := uc.MergedLinkedInConfig(*h.cfg)
+			if liCfg.AccessToken == "" && liCfg.PersonURN == "" && uc.LinkitinCookiesJSON == "" {
+				progress <- dto.ProgressEvent{
+					Type:    "error",
+					Message: "LinkedIn is not connected — install the GoViral browser extension to sync cookies, or connect via OAuth in Settings",
+				}
+				errCount++
+				continue
+			}
+		}
+
 		var niches []string
 		switch p {
 		case "x":
@@ -108,7 +133,8 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 				Type:    "error",
 				Message: fmt.Sprintf("no niches configured for %s", p),
 			}
-			return
+			errCount++
+			continue
 		}
 
 		progress <- dto.ProgressEvent{
@@ -135,7 +161,8 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 				Type:    "error",
 				Message: fmt.Sprintf("failed to discover trending on %s: %v", p, err),
 			}
-			return
+			errCount++
+			continue
 		}
 
 		for _, tp := range posts {
@@ -152,9 +179,11 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 		}
 	}
 
-	progress <- dto.ProgressEvent{
-		Type:       "complete",
-		Message:    "Finished discovering trending posts",
-		Percentage: 100,
+	if errCount < len(platforms) {
+		progress <- dto.ProgressEvent{
+			Type:       "complete",
+			Message:    "Finished discovering trending posts",
+			Percentage: 100,
+		}
 	}
 }

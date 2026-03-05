@@ -61,8 +61,9 @@ func NewFallbackClientWithCookiePath(cfg config.XConfig, cookiePath string) *Fal
 	primary := NewClient(cfg)
 
 	fc := &FallbackClient{
-		primary:       primary,
-		primaryPoster: primary,
+		primary:         primary,
+		primaryPoster:   primary,
+		primaryDisabled: cfg.BearerToken == "" && cfg.Username == "",
 	}
 
 	var tc *TwikitClient

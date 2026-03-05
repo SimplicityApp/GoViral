@@ -119,7 +119,21 @@ export function Trending() {
         />
       </div>
 
-      {discoverMutation.progress && (
+      {discoverMutation.error && (
+        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          <div className="flex items-center justify-between gap-3">
+            <span>{discoverMutation.error}</span>
+            <button
+              onClick={() => navigate('/settings')}
+              className="shrink-0 rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 transition-colors hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800"
+            >
+              Go to Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {discoverMutation.progress && !discoverMutation.error && (
         <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3">
           <div className="mb-1 text-sm text-[var(--color-text)]">
             {discoverMutation.progress.message}

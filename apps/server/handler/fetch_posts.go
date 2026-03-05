@@ -85,7 +85,32 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 	linkitinConfigDir, linkitinCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
 	defer linkitinCleanup()
 
+	var errCount int
 	for _, p := range platforms {
+		// Pre-flight credential check: fail fast if no credentials are configured.
+		switch p {
+		case "x":
+			xCfg := uc.MergedXConfig(*h.cfg)
+			if xCfg.Username == "" && uc.TwikitCookiesJSON == "" {
+				progress <- dto.ProgressEvent{
+					Type:    "error",
+					Message: "X is not connected — install the GoViral browser extension to sync cookies, or paste your X cookies manually in Settings",
+				}
+				errCount++
+				continue
+			}
+		case "linkedin":
+			liCfg := uc.MergedLinkedInConfig(*h.cfg)
+			if liCfg.AccessToken == "" && liCfg.PersonURN == "" && uc.LinkitinCookiesJSON == "" {
+				progress <- dto.ProgressEvent{
+					Type:    "error",
+					Message: "LinkedIn is not connected — install the GoViral browser extension to sync cookies, or connect via OAuth in Settings",
+				}
+				errCount++
+				continue
+			}
+		}
+
 		progress <- dto.ProgressEvent{
 			Type:       "progress",
 			Message:    fmt.Sprintf("Fetching posts from %s...", p),
@@ -107,7 +132,7 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 				Type:    "error",
 				Message: fmt.Sprintf("unknown platform: %s", p),
 			}
-			return
+			continue
 		}
 
 		if err != nil {
@@ -116,7 +141,8 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 				Type:    "error",
 				Message: fmt.Sprintf("failed to fetch from %s: %v", p, err),
 			}
-			return
+			errCount++
+			continue
 		}
 
 		for _, post := range posts {
@@ -133,9 +159,11 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 		}
 	}
 
-	progress <- dto.ProgressEvent{
-		Type:       "complete",
-		Message:    "Finished fetching posts",
-		Percentage: 100,
+	if errCount < len(platforms) {
+		progress <- dto.ProgressEvent{
+			Type:       "complete",
+			Message:    "Finished fetching posts",
+			Percentage: 100,
+		}
 	}
 }
