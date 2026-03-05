@@ -1,8 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useSSEMutation } from './useSSE'
 import type { GeneratedContent } from '@/lib/types'
 
 export function useFetchCommits(repoId: number | null) {
-  const sse = useSSEMutation<null>(`/repos/${repoId}/fetch`)
+  const queryClient = useQueryClient()
+  const sse = useSSEMutation<null>(`/repos/${repoId}/fetch`, {
+    onComplete: () => {
+      void queryClient.invalidateQueries({ queryKey: ['repo-commits', repoId] })
+    },
+  })
   return {
     mutate: sse.mutate,
     isLoading: sse.isRunning,

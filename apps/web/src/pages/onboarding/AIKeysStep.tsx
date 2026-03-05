@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { Check } from 'lucide-react'
 
 export function AIKeysStep({ config }: { config: AppConfig | undefined }) {
-  const [claudeKey, setClaudeKey] = useState(config?.claude.api_key || '')
-  const [geminiKey, setGeminiKey] = useState(config?.gemini.api_key || '')
+  const [claudeKey, setClaudeKey] = useState(config?.claude.user_api_key || '')
+  const [geminiKey, setGeminiKey] = useState(config?.gemini.user_api_key || '')
   const [saved, setSaved] = useState(false)
   const updateConfig = useUpdateConfigMutation()
 

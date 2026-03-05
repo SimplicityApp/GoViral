@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useConfigQuery, useUpdateConfigMutation } from '@/hooks/useConfig'
 import type { UpdateConfigPayload } from '@/hooks/useConfig'
 import { useDaemonConfigQuery, useUpdateDaemonConfigMutation } from '@/hooks/useDaemon'
@@ -8,10 +8,26 @@ import { usePlatformStore } from '@/stores/platform-store'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { MaskedInput } from '@/components/shared/MaskedInput'
 import { NicheSelector } from '@/components/shared/NicheSelector'
-import { Puzzle, Download, ChevronDown } from 'lucide-react'
+import { Puzzle, Download, ChevronDown, Check, Github } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiClient, BASE_URL } from '@/lib/api'
+
+function CredentialStatus({ configured }: { configured: boolean }) {
+  if (configured) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+        <Check size={10} />
+        Configured
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+      Not set
+    </span>
+  )
+}
 
 export function Settings() {
   const { activePlatform } = usePlatformStore()
@@ -26,6 +42,49 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState<'x' | 'linkedin' | 'github' | 'telegram'>('x')
   const [xAdvancedOpen, setXAdvancedOpen] = useState(false)
   const [liAdvancedOpen, setLiAdvancedOpen] = useState(false)
+
+  // GitHub OAuth
+  const [ghConnecting, setGhConnecting] = useState(false)
+  const ghPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (ghPollRef.current) clearInterval(ghPollRef.current)
+    }
+  }, [])
+
+  const handleConnectGitHub = async () => {
+    setGhConnecting(true)
+    try {
+      const resp = await apiClient.post<{ auth_url: string; key: string; status: string }>('/auth/github/start', {})
+      if (resp.auth_url) {
+        window.open(resp.auth_url, '_blank', 'noopener')
+      }
+      const authKey = resp.key
+      ghPollRef.current = setInterval(async () => {
+        try {
+          const status = await apiClient.get<{ status: string; error?: string }>(`/auth/github/status?key=${authKey}`)
+          if (status.status === 'completed') {
+            if (ghPollRef.current) clearInterval(ghPollRef.current)
+            ghPollRef.current = null
+            setGhConnecting(false)
+            void queryClient.invalidateQueries({ queryKey: ['config'] })
+            toast.success('GitHub connected')
+          } else if (status.status === 'failed') {
+            if (ghPollRef.current) clearInterval(ghPollRef.current)
+            ghPollRef.current = null
+            setGhConnecting(false)
+            toast.error(status.error || 'GitHub authorization failed')
+          }
+        } catch {
+          // ignore polling errors
+        }
+      }, 2000)
+    } catch (err) {
+      setGhConnecting(false)
+      toast.error(err instanceof Error ? err.message : 'Failed to start GitHub OAuth')
+    }
+  }
 
   const { data: daemonConfig } = useDaemonConfigQuery()
   const updateDaemonConfig = useUpdateDaemonConfigMutation()
@@ -68,13 +127,6 @@ export function Settings() {
     claude_api_key: '',
     gemini_api_key: '',
     x_username: '',
-    x_api_key: '',
-    x_api_secret: '',
-    x_client_id: '',
-    x_client_secret: '',
-    linkedin_client_id: '',
-    linkedin_client_secret: '',
-    github_pat: '',
     niches: [] as string[],
     linkedin_niches: [] as string[],
   })
@@ -82,16 +134,9 @@ export function Settings() {
   useEffect(() => {
     if (config) {
       setForm({
-        claude_api_key: config.claude.api_key || '',
-        gemini_api_key: config.gemini.api_key || '',
+        claude_api_key: config.claude.user_api_key || '',
+        gemini_api_key: config.gemini.user_api_key || '',
         x_username: config.x.username || '',
-        x_api_key: config.x.api_key || '',
-        x_api_secret: config.x.api_secret || '',
-        x_client_id: config.x.client_id || '',
-        x_client_secret: config.x.client_secret || '',
-        linkedin_client_id: config.linkedin.client_id || '',
-        linkedin_client_secret: config.linkedin.client_secret || '',
-        github_pat: config.github?.personal_access_token || '',
         niches: config.niches || [],
         linkedin_niches: config.linkedin_niches || [],
       })
@@ -112,25 +157,20 @@ export function Settings() {
   )
 
   const handleSave = () => {
-    // Build nested payload matching server's UpdateConfigRequest
-    const payload: UpdateConfigPayload = {
-      claude: { api_key: form.claude_api_key },
-      gemini: { api_key: form.gemini_api_key },
-      x: {
-        username: form.x_username,
-        api_key: form.x_api_key,
-        api_secret: form.x_api_secret,
-        client_id: form.x_client_id,
-        client_secret: form.x_client_secret,
-      },
-      linkedin: {
-        client_id: form.linkedin_client_id,
-        client_secret: form.linkedin_client_secret,
-      },
-      github: { personal_access_token: form.github_pat },
-      niches: form.niches,
-      linkedin_niches: form.linkedin_niches,
+    const payload: UpdateConfigPayload = {}
+
+    if (form.claude_api_key !== (config?.claude.user_api_key ?? '')) {
+      payload.claude = { api_key: form.claude_api_key }
     }
+    if (form.gemini_api_key !== (config?.gemini.user_api_key ?? '')) {
+      payload.gemini = { api_key: form.gemini_api_key }
+    }
+    if (form.x_username !== (config?.x.username ?? '')) {
+      payload.x = { username: form.x_username }
+    }
+
+    payload.niches = form.niches
+    payload.linkedin_niches = form.linkedin_niches
 
     updateConfig.mutate(payload, {
       onSuccess: () => toast.success('Settings saved'),
@@ -144,21 +184,113 @@ export function Settings() {
     <div className="mx-auto max-w-2xl p-6">
       <h2 className="mb-6 text-lg font-semibold text-[var(--color-text)]">Settings</h2>
 
+      {/* AI API Keys */}
       <section className="mb-8">
         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
           AI API Keys
         </h3>
-        <div className="flex flex-col gap-4">
-          <MaskedInput
-            label="Claude API Key"
-            value={form.claude_api_key}
-            onChange={(v) => setForm((f) => ({ ...f, claude_api_key: v }))}
-          />
-          <MaskedInput
-            label="Gemini API Key"
-            value={form.gemini_api_key}
-            onChange={(v) => setForm((f) => ({ ...f, gemini_api_key: v }))}
-          />
+        <div className="flex flex-col gap-6">
+          {/* Claude */}
+          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-[var(--color-text)]">Claude</span>
+              {config?.claude.has_global_key ? (
+                <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                  Free tier available
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                  Not configured
+                </span>
+              )}
+            </div>
+            {config?.claude.has_global_key && (
+              <div className="mb-3">
+                <p className="mb-1 text-xs text-[var(--color-text-secondary)]">
+                  {config.claude.daily_used} / {config.claude.daily_limit} requests used today
+                </p>
+                <div className="h-2 w-full rounded-full bg-gray-200">
+                  <div
+                    className="h-2 rounded-full bg-blue-500"
+                    style={{
+                      width: `${Math.min(100, (config.claude.daily_used / Math.max(1, config.claude.daily_limit)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-[var(--color-text)]">
+                  Your API Key (optional)
+                </label>
+                {config?.claude.user_api_key && (
+                  <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                    Using your own key — no rate limit
+                  </span>
+                )}
+              </div>
+              <MaskedInput
+                label=""
+                value={form.claude_api_key}
+                onChange={(v) => setForm((f) => ({ ...f, claude_api_key: v }))}
+              />
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                Bring your own key to bypass daily rate limits
+              </p>
+            </div>
+          </div>
+
+          {/* Gemini */}
+          <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-[var(--color-text)]">Gemini</span>
+              {config?.gemini.has_global_key ? (
+                <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                  Free tier available
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                  Not configured
+                </span>
+              )}
+            </div>
+            {config?.gemini.has_global_key && (
+              <div className="mb-3">
+                <p className="mb-1 text-xs text-[var(--color-text-secondary)]">
+                  {config.gemini.daily_used} / {config.gemini.daily_limit} requests used today
+                </p>
+                <div className="h-2 w-full rounded-full bg-gray-200">
+                  <div
+                    className="h-2 rounded-full bg-blue-500"
+                    style={{
+                      width: `${Math.min(100, (config.gemini.daily_used / Math.max(1, config.gemini.daily_limit)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-[var(--color-text)]">
+                  Your API Key (optional)
+                </label>
+                {config?.gemini.user_api_key && (
+                  <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                    Using your own key — no rate limit
+                  </span>
+                )}
+              </div>
+              <MaskedInput
+                label=""
+                value={form.gemini_api_key}
+                onChange={(v) => setForm((f) => ({ ...f, gemini_api_key: v }))}
+              />
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                Bring your own key to bypass daily rate limits
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -374,30 +506,30 @@ export function Settings() {
               />
             </button>
             {xAdvancedOpen && (
-              <div className="mt-4 flex flex-col gap-4 pl-1">
-                <MaskedInput
-                  label="API Key"
-                  value={form.x_api_key}
-                  onChange={(v) => setForm((f) => ({ ...f, x_api_key: v }))}
-                />
-                <MaskedInput
-                  label="API Secret"
-                  value={form.x_api_secret}
-                  onChange={(v) => setForm((f) => ({ ...f, x_api_secret: v }))}
-                />
-                <MaskedInput
-                  label="Client ID"
-                  value={form.x_client_id}
-                  onChange={(v) => setForm((f) => ({ ...f, x_client_id: v }))}
-                />
-                <MaskedInput
-                  label="Client Secret"
-                  value={form.x_client_secret}
-                  onChange={(v) => setForm((f) => ({ ...f, x_client_secret: v }))}
-                />
+              <div className="mt-4 flex flex-col gap-3 pl-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">API Key</span>
+                  <CredentialStatus configured={config?.x.has_api_key ?? false} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">API Secret</span>
+                  <CredentialStatus configured={config?.x.has_api_secret ?? false} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">Bearer Token</span>
+                  <CredentialStatus configured={config?.x.has_bearer_token ?? false} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">Client ID</span>
+                  <CredentialStatus configured={config?.x.has_client_id ?? false} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">Client Secret</span>
+                  <CredentialStatus configured={config?.x.has_client_secret ?? false} />
+                </div>
                 <a
                   href={`${BASE_URL}/oauth/x/login`}
-                  className="w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
+                  className="mt-1 w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
                 >
                   Connect X (OAuth)
                 </a>
@@ -491,20 +623,18 @@ export function Settings() {
               />
             </button>
             {liAdvancedOpen && (
-              <div className="mt-4 flex flex-col gap-4 pl-1">
-                <MaskedInput
-                  label="Client ID"
-                  value={form.linkedin_client_id}
-                  onChange={(v) => setForm((f) => ({ ...f, linkedin_client_id: v }))}
-                />
-                <MaskedInput
-                  label="Client Secret"
-                  value={form.linkedin_client_secret}
-                  onChange={(v) => setForm((f) => ({ ...f, linkedin_client_secret: v }))}
-                />
+              <div className="mt-4 flex flex-col gap-3 pl-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">Client ID</span>
+                  <CredentialStatus configured={config?.linkedin.has_client_id ?? false} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--color-text-secondary)]">Client Secret</span>
+                  <CredentialStatus configured={config?.linkedin.has_client_secret ?? false} />
+                </div>
                 <a
                   href={`${BASE_URL}/oauth/linkedin/login`}
-                  className="w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
+                  className="mt-1 w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
                 >
                   Connect LinkedIn (OAuth)
                 </a>
@@ -521,11 +651,59 @@ export function Settings() {
             GitHub
           </h3>
           <div className="flex flex-col gap-4">
-            <MaskedInput
-              label="Personal Access Token"
-              value={form.github_pat}
-              onChange={(v) => setForm((f) => ({ ...f, github_pat: v }))}
-            />
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[var(--color-text-secondary)]">Authentication</span>
+              {(config?.github?.has_auth) ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                  <Check size={10} />
+                  Connected
+                </span>
+              ) : (config?.github?.has_pat) ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                  <Check size={10} />
+                  Token configured
+                </span>
+              ) : (config?.github?.has_oauth) ? (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                  Not connected
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                  Not configured
+                </span>
+              )}
+            </div>
+            {!config?.github?.has_auth && !config?.github?.has_pat && config?.github?.has_oauth && (
+              <button
+                onClick={handleConnectGitHub}
+                disabled={ghConnecting}
+                className="flex w-fit items-center gap-2 rounded-[var(--radius-button)] bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+              >
+                <Github size={16} />
+                {ghConnecting ? 'Waiting for authorization...' : 'Connect GitHub'}
+              </button>
+            )}
+            {config?.github?.has_auth && (
+              <button
+                onClick={handleConnectGitHub}
+                disabled={ghConnecting}
+                className="w-fit rounded-[var(--radius-button)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-card)]"
+              >
+                {ghConnecting ? 'Waiting for authorization...' : 'Reconnect'}
+              </button>
+            )}
+            {config?.github?.default_owner && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">Default Owner</span>
+                <span className="text-[var(--color-text)]">{config.github.default_owner}</span>
+              </div>
+            )}
+            {config?.github?.default_repo && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--color-text-secondary)]">Default Repo</span>
+                <span className="text-[var(--color-text)]">{config.github.default_repo}</span>
+              </div>
+            )}
             <p className="text-xs text-[var(--color-text-secondary)]">
               Used to read repository commits for the Code to Post feature. Requires repo read scope.
             </p>

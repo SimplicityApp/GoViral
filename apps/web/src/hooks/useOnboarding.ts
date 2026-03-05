@@ -36,7 +36,7 @@ function derivePlatformsFromConfig(config?: AppConfig): Set<string> | null {
   const platforms = new Set<string>()
   if (config.x.username || config.x.has_twikit_auth) platforms.add('x')
   if (config.linkedin.has_linkitin_auth) platforms.add('linkedin')
-  if (config.github?.personal_access_token) platforms.add('github')
+  if (config.github?.has_pat || config.github?.has_oauth) platforms.add('github')
   return platforms.size > 0 ? platforms : null
 }
 
