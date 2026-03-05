@@ -17,16 +17,16 @@ import { PlatformSwitcher } from './PlatformSwitcher'
 import { useUIStore } from '@/stores/ui-store'
 import { usePlatformStore } from '@/stores/platform-store'
 
-const platformNavItems = [
+const platformNavItems: { path: string; label: string; icon: typeof FileText; platforms?: string[] }[] = [
   { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: 'posts', label: 'My Posts', icon: FileText },
-  { path: 'trending', label: 'Trending', icon: TrendingUp },
-  { path: 'generate', label: 'Generate', icon: Sparkles },
-  { path: 'history', label: 'History', icon: Clock },
-  { path: 'publish', label: 'Publish', icon: Send },
-  { path: 'autopilot', label: 'Autopilot', icon: Bot },
-  { path: 'code-to-post', label: 'Code to Post', icon: Code },
-  { path: 'video', label: 'Video', icon: Video },
+  { path: 'posts', label: 'My Posts', icon: FileText, platforms: ['x', 'linkedin'] },
+  { path: 'trending', label: 'Trending', icon: TrendingUp, platforms: ['x', 'linkedin'] },
+  { path: 'generate', label: 'Generate', icon: Sparkles, platforms: ['x', 'linkedin'] },
+  { path: 'publish', label: 'Publish', icon: Send, platforms: ['x', 'linkedin'] },
+  { path: 'history', label: 'History', icon: Clock, platforms: ['x', 'linkedin'] },
+  { path: 'code-to-post', label: 'Code to Post', icon: Code, platforms: ['x', 'linkedin'] },
+  { path: 'autopilot', label: 'Autopilot', icon: Bot, platforms: ['x', 'linkedin'] },
+  { path: 'video', label: 'Video', icon: Video, platforms: ['youtube', 'tiktok'] },
 ]
 
 export function Sidebar() {
@@ -49,7 +49,7 @@ export function Sidebar() {
         }`}
       >
         <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-lg font-bold text-[var(--color-text)]">GoViral</span>
+          <NavLink to="/" className="text-lg font-bold text-[var(--color-text)] hover:opacity-80 transition-opacity">GoViral</NavLink>
           <button
             onClick={() => setSidebarOpen(false)}
             className="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] lg:hidden"
@@ -61,7 +61,9 @@ export function Sidebar() {
         <PlatformSwitcher />
 
         <nav className="flex-1 overflow-y-auto px-2 py-4">
-          {platformNavItems.map((item) => (
+          {platformNavItems
+            .filter((item) => !item.platforms || item.platforms.includes(activePlatform))
+            .map((item) => (
             <NavLink
               key={item.path}
               to={`/${activePlatform}/${item.path}`}

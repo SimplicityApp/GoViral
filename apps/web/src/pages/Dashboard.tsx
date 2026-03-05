@@ -72,6 +72,22 @@ export function Dashboard() {
 
   const isLoading = postsLoading || trendingLoading || historyLoading
 
+  if (platform === 'youtube' || platform === 'tiktok') {
+    const name = platform === 'youtube' ? 'YouTube' : 'TikTok'
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <h2 className="mb-6 text-lg font-semibold text-[var(--color-text)]">Dashboard</h2>
+        <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-8 text-center">
+          <div className="mb-4 text-4xl">🚧</div>
+          <h3 className="mb-2 text-lg font-semibold text-[var(--color-text)]">{name} — Under Construction</h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {name} support is coming soon. Stay tuned!
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) return <LoadingSpinner />
 
   return (
