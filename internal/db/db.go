@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shuhao/goviral/internal/config"
 	"github.com/shuhao/goviral/pkg/models"
 	_ "modernc.org/sqlite"
 )
@@ -27,6 +28,12 @@ func New(dbPath string) (*DB, error) {
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
+	}
+
+	// Allow concurrent writers to wait up to 5s instead of failing immediately
+	if _, err := conn.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("setting busy timeout: %w", err)
 	}
 
 	db := &DB{conn: conn}
@@ -301,6 +308,24 @@ func (db *DB) migrate() error {
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_user_platform ON persona(user_id, platform)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_github_repos_user_fullname ON github_repos(user_id, full_name)")
 	db.conn.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_trending_posts_user_platform_post ON trending_posts(user_id, platform_post_id)")
+
+	// Per-user config storage
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS user_config (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id TEXT UNIQUE NOT NULL,
+		config_json TEXT NOT NULL DEFAULT '{}',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// AI usage tracking (daily, per user+provider)
+	db.conn.Exec(`CREATE TABLE IF NOT EXISTS ai_usage (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		used_at DATE NOT NULL,
+		request_count INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(user_id, provider, used_at)
+	)`)
 
 	return nil
 }
@@ -874,4 +899,83 @@ func scanScheduledPosts(rows *sql.Rows) ([]models.ScheduledPost, error) {
 		posts = append(posts, sp)
 	}
 	return posts, rows.Err()
+}
+
+// --- user_config CRUD ---
+
+// GetUserConfig retrieves the per-user config for the given user ID.
+// Returns a zero-value UserConfig if no row exists.
+func (db *DB) GetUserConfig(userID string) (*config.UserConfig, error) {
+	var configJSON string
+	err := db.conn.QueryRow(
+		"SELECT config_json FROM user_config WHERE user_id = ?",
+		userID,
+	).Scan(&configJSON)
+	if err == sql.ErrNoRows {
+		return &config.UserConfig{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying user config: %w", err)
+	}
+	var uc config.UserConfig
+	if err := json.Unmarshal([]byte(configJSON), &uc); err != nil {
+		return nil, fmt.Errorf("parsing user config JSON: %w", err)
+	}
+	return &uc, nil
+}
+
+// SaveUserConfig upserts the per-user config.
+func (db *DB) SaveUserConfig(userID string, uc *config.UserConfig) error {
+	configJSON, err := json.Marshal(uc)
+	if err != nil {
+		return fmt.Errorf("marshaling user config: %w", err)
+	}
+	_, err = db.conn.Exec(
+		`INSERT INTO user_config (user_id, config_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id) DO UPDATE SET config_json = excluded.config_json, updated_at = CURRENT_TIMESTAMP`,
+		userID, string(configJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("upserting user config: %w", err)
+	}
+	return nil
+}
+
+// --- ai_usage CRUD ---
+
+// IncrementAIUsage atomically increments today's AI usage count and returns the new count.
+func (db *DB) IncrementAIUsage(userID, provider string) (int, error) {
+	_, err := db.conn.Exec(
+		`INSERT INTO ai_usage (user_id, provider, used_at, request_count) VALUES (?, ?, date('now'), 1)
+		ON CONFLICT(user_id, provider, used_at) DO UPDATE SET request_count = request_count + 1`,
+		userID, provider,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("incrementing AI usage: %w", err)
+	}
+	var count int
+	err = db.conn.QueryRow(
+		"SELECT request_count FROM ai_usage WHERE user_id = ? AND provider = ? AND used_at = date('now')",
+		userID, provider,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("querying AI usage after increment: %w", err)
+	}
+	return count, nil
+}
+
+// GetAIUsage returns today's AI usage count for the given user and provider.
+func (db *DB) GetAIUsage(userID, provider string) (int, error) {
+	var count int
+	err := db.conn.QueryRow(
+		"SELECT request_count FROM ai_usage WHERE user_id = ? AND provider = ? AND used_at = date('now')",
+		userID, provider,
+	).Scan(&count)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("querying AI usage: %w", err)
+	}
+	return count, nil
 }

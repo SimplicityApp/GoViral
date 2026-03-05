@@ -48,6 +48,8 @@ type TikTokConfig struct {
 // GitHubConfig contains GitHub API settings.
 type GitHubConfig struct {
 	PersonalAccessToken string `yaml:"personal_access_token"`
+	ClientID            string `yaml:"client_id"`
+	ClientSecret        string `yaml:"client_secret"`
 	DefaultOwner        string `yaml:"default_owner"`
 	DefaultRepo         string `yaml:"default_repo"`
 }
@@ -82,13 +84,15 @@ type TelegramConfig struct {
 // ServerConfig contains HTTP server settings.
 type ServerConfig struct {
 	Port           int      `yaml:"port"`
+	BaseURL        string   `yaml:"base_url"`
 	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // GeminiConfig contains Google Gemini API settings.
 type GeminiConfig struct {
-	APIKey string `yaml:"api_key"`
-	Model  string `yaml:"model"`
+	APIKey     string `yaml:"api_key"`
+	Model      string `yaml:"model"`
+	DailyLimit int    `yaml:"daily_limit"`
 }
 
 // XConfig contains X/Twitter API credentials.
@@ -115,8 +119,9 @@ type LinkedInConfig struct {
 
 // ClaudeConfig contains Anthropic Claude API settings.
 type ClaudeConfig struct {
-	APIKey string `yaml:"api_key"`
-	Model  string `yaml:"model"`
+	APIKey     string `yaml:"api_key"`
+	Model      string `yaml:"model"`
+	DailyLimit int    `yaml:"daily_limit"`
 }
 
 // DefaultConfigDir returns the default config directory path.
@@ -154,6 +159,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	// Environment variable overrides (useful for secrets in production)
+	applyEnvOverrides(&cfg)
+
 	if cfg.DBPath == "" {
 		cfg.DBPath = DefaultDBPath()
 	}
@@ -166,8 +174,19 @@ func Load(path string) (*Config, error) {
 		cfg.Gemini.Model = "gemini-2.0-flash-exp"
 	}
 
+	if cfg.Claude.DailyLimit == 0 {
+		cfg.Claude.DailyLimit = 50
+	}
+	if cfg.Gemini.DailyLimit == 0 {
+		cfg.Gemini.DailyLimit = 50
+	}
+
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 8080
+	}
+
+	if cfg.Server.BaseURL == "" {
+		cfg.Server.BaseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
 	}
 
 	if cfg.Daemon.MaxPerBatch == 0 {
@@ -243,6 +262,19 @@ func Save(cfg *Config, path string) error {
 	}
 
 	return nil
+}
+
+// applyEnvOverrides overrides config fields from environment variables.
+func applyEnvOverrides(cfg *Config) {
+	envStr := func(key string, dst *string) {
+		if v := os.Getenv(key); v != "" {
+			*dst = v
+		}
+	}
+	envStr("GITHUB_CLIENT_ID", &cfg.GitHub.ClientID)
+	envStr("GITHUB_CLIENT_SECRET", &cfg.GitHub.ClientSecret)
+	envStr("CLAUDE_API_KEY", &cfg.Claude.APIKey)
+	envStr("GEMINI_API_KEY", &cfg.Gemini.APIKey)
 }
 
 // EnsureConfigDir creates the config directory if it doesn't exist.

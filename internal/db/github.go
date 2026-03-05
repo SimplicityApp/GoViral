@@ -206,6 +206,27 @@ func (db *DB) GetRepoCommit(repoID int64, sha string) (*models.RepoCommitRecord,
 	return &rc, nil
 }
 
+// GetRepoCommitByIDForUser returns a commit by its ID, validating that the
+// commit's repo belongs to the given user via a JOIN on github_repos.
+func (db *DB) GetRepoCommitByIDForUser(userID string, id int64) (*models.RepoCommitRecord, error) {
+	var rc models.RepoCommitRecord
+	err := db.conn.QueryRow(
+		`SELECT rc.id, rc.repo_id, rc.sha, rc.message, rc.author_name, rc.author_email, rc.committed_at,
+		        rc.additions, rc.deletions, rc.files_changed, rc.diff_summary, rc.diff_patch, rc.files_json, rc.fetched_at
+		 FROM repo_commits rc
+		 JOIN github_repos gr ON rc.repo_id = gr.id
+		 WHERE rc.id = ? AND gr.user_id = ?`,
+		id, userID,
+	).Scan(&rc.ID, &rc.RepoID, &rc.SHA, &rc.Message, &rc.AuthorName, &rc.AuthorEmail, &rc.CommittedAt, &rc.Additions, &rc.Deletions, &rc.FilesChanged, &rc.DiffSummary, &rc.DiffPatch, &rc.FilesJSON, &rc.FetchedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("getting repo commit by id for user: %w", err)
+	}
+	return &rc, nil
+}
+
 // GetRepoCommitByID returns a commit by its ID.
 func (db *DB) GetRepoCommitByID(id int64) (*models.RepoCommitRecord, error) {
 	var rc models.RepoCommitRecord
