@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useConfigQuery, useUpdateConfigMutation } from '@/hooks/useConfig'
 import type { UpdateConfigPayload } from '@/hooks/useConfig'
 import { useDaemonConfigQuery, useUpdateDaemonConfigMutation } from '@/hooks/useDaemon'
@@ -150,11 +150,6 @@ export function Settings() {
       })
     }
   }, [config])
-
-  const allNiches = useMemo(
-    () => [...new Set([...form.niches, ...form.linkedin_niches])],
-    [form.niches, form.linkedin_niches],
-  )
 
   const handleSave = () => {
     const payload: UpdateConfigPayload = {}
@@ -465,14 +460,7 @@ export function Settings() {
             </h3>
             <NicheSelector
               selected={form.niches}
-              allNiches={allNiches}
               onChange={(niches) => setForm((f) => ({ ...f, niches }))}
-              onAddNiche={(tag) =>
-                setForm((f) => ({
-                  ...f,
-                  niches: f.niches.includes(tag) ? f.niches : [...f.niches, tag],
-                }))
-              }
             />
           </section>
 
@@ -580,16 +568,7 @@ export function Settings() {
             </h3>
             <NicheSelector
               selected={form.linkedin_niches}
-              allNiches={allNiches}
               onChange={(niches) => setForm((f) => ({ ...f, linkedin_niches: niches }))}
-              onAddNiche={(tag) =>
-                setForm((f) => ({
-                  ...f,
-                  linkedin_niches: f.linkedin_niches.includes(tag)
-                    ? f.linkedin_niches
-                    : [...f.linkedin_niches, tag],
-                }))
-              }
             />
           </section>
 

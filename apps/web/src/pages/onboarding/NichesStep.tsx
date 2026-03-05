@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { NicheSelector } from '@/components/shared/NicheSelector'
 import { useUpdateConfigMutation } from '@/hooks/useConfig'
 import type { AppConfig } from '@/hooks/useConfig'
@@ -16,11 +16,6 @@ export function NichesStep({
   const [linkedinNiches, setLinkedinNiches] = useState<string[]>(config?.linkedin_niches || [])
   const [saved, setSaved] = useState(false)
   const updateConfig = useUpdateConfigMutation()
-
-  const allNiches = useMemo(
-    () => [...new Set([...niches, ...linkedinNiches])],
-    [niches, linkedinNiches],
-  )
 
   const handleSave = () => {
     updateConfig.mutate(
@@ -54,14 +49,7 @@ export function NichesStep({
             </h3>
             <NicheSelector
               selected={niches}
-              allNiches={allNiches}
               onChange={(v) => { setNiches(v); setSaved(false) }}
-              onAddNiche={(tag) => {
-                if (!niches.includes(tag)) {
-                  setNiches((prev) => [...prev, tag])
-                  setSaved(false)
-                }
-              }}
             />
           </div>
         )}
@@ -72,14 +60,7 @@ export function NichesStep({
             </h3>
             <NicheSelector
               selected={linkedinNiches}
-              allNiches={allNiches}
               onChange={(v) => { setLinkedinNiches(v); setSaved(false) }}
-              onAddNiche={(tag) => {
-                if (!linkedinNiches.includes(tag)) {
-                  setLinkedinNiches((prev) => [...prev, tag])
-                  setSaved(false)
-                }
-              }}
             />
           </div>
         )}
