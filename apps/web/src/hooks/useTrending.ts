@@ -25,7 +25,11 @@ export function useDiscoverMutation() {
   const { extension } = useExtensionCookies()
   const extensionLinkedIn = useExtensionLinkedIn()
 
-  const sseMutation = useSSEMutation<TrendingPost[]>('/trending/discover')
+  const sseMutation = useSSEMutation<TrendingPost[]>('/trending/discover', {
+    onComplete: () => {
+      void queryClient.invalidateQueries({ queryKey: ['trending'] })
+    },
+  })
 
   return {
     ...sseMutation,
