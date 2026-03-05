@@ -47,6 +47,12 @@ type FallbackClient struct {
 // and linkitin as fallback. If linkitin setup fails (e.g. no Python),
 // the client operates with primary only and logs a warning.
 func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *FallbackClient {
+	return NewFallbackClientWithConfigDir(cfg, influencerURNs, "")
+}
+
+// NewFallbackClientWithConfigDir creates a FallbackClient with a custom linkitin config directory.
+// If configDir is empty, the default global path is used.
+func NewFallbackClientWithConfigDir(cfg config.LinkedInConfig, influencerURNs []string, configDir string) *FallbackClient {
 	primary := NewClient(cfg, influencerURNs)
 
 	fc := &FallbackClient{
@@ -58,7 +64,13 @@ func NewFallbackClient(cfg config.LinkedInConfig, influencerURNs []string) *Fall
 		slog.Info("linkedin primary API disabled (no access token or person URN)")
 	}
 
-	lc, err := NewLinkitinClient()
+	var lc *LinkitinClient
+	var err error
+	if configDir != "" {
+		lc, err = NewLinkitinClientWithConfigDir(configDir)
+	} else {
+		lc, err = NewLinkitinClient()
+	}
 	if err != nil {
 		slog.Warn("linkitin fallback unavailable, official LinkedIn API only", "error", err)
 	} else {

@@ -28,7 +28,10 @@ import sys
 # Marker file written when Chrome proxy mode is activated.
 # Subsequent subprocesses check this file to restore proxy mode without
 # re-running the full browser login flow.
-_GOVIRAL_DIR = os.path.join(os.path.expanduser("~"), ".goviral")
+_GOVIRAL_DIR = os.environ.get(
+    "GOVIRAL_CONFIG_DIR",
+    os.path.join(os.path.expanduser("~"), ".goviral"),
+)
 _CHROME_PROXY_MARKER = os.path.join(_GOVIRAL_DIR, "linkitin_chrome_proxy")
 
 

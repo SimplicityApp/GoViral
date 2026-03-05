@@ -50,6 +50,12 @@ type FallbackClient struct {
 // and twikit as fallback. If twikit setup fails (e.g. no Python),
 // the client operates with primary only and logs a warning.
 func NewFallbackClient(cfg config.XConfig) *FallbackClient {
+	return NewFallbackClientWithCookiePath(cfg, "")
+}
+
+// NewFallbackClientWithCookiePath creates a FallbackClient with a custom twikit cookie path.
+// If cookiePath is empty, the default global path is used.
+func NewFallbackClientWithCookiePath(cfg config.XConfig, cookiePath string) *FallbackClient {
 	primary := NewClient(cfg)
 
 	fc := &FallbackClient{
@@ -57,7 +63,13 @@ func NewFallbackClient(cfg config.XConfig) *FallbackClient {
 		primaryPoster: primary,
 	}
 
-	tc, err := NewTwikitClient(cfg.Username)
+	var tc *TwikitClient
+	var err error
+	if cookiePath != "" {
+		tc, err = NewTwikitClientWithCookiePath(cfg.Username, cookiePath)
+	} else {
+		tc, err = NewTwikitClient(cfg.Username)
+	}
 	if err != nil {
 		log.Printf("twikit fallback unavailable: %v (primary API only)", err)
 	} else {

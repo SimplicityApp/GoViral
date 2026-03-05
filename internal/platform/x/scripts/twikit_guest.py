@@ -18,7 +18,10 @@ import sys
 import subprocess
 
 
-COOKIES_PATH = os.path.join(os.path.expanduser("~"), ".goviral", "twikit_cookies.json")
+COOKIES_PATH = os.environ.get(
+    "GOVIRAL_TWIKIT_COOKIES_PATH",
+    os.path.join(os.path.expanduser("~"), ".goviral", "twikit_cookies.json"),
+)
 
 
 def ensure_package(package_name, pip_name=None):

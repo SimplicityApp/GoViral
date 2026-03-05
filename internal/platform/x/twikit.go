@@ -27,6 +27,7 @@ type TwikitClient struct {
 	username   string
 	pythonPath string
 	scriptPath string
+	cookiePath string // custom cookie path; empty means use default global path
 }
 
 // NewTwikitClient creates a TwikitClient. Returns an error if python3/python
@@ -51,11 +52,31 @@ func NewTwikitClient(username string) (*TwikitClient, error) {
 	}, nil
 }
 
+// NewTwikitClientWithCookiePath creates a TwikitClient that uses a custom cookie file path
+// instead of the default global path. This enables per-user cookie isolation.
+func NewTwikitClientWithCookiePath(username string, cookiePath string) (*TwikitClient, error) {
+	tc, err := NewTwikitClient(username)
+	if err != nil {
+		return nil, err
+	}
+	tc.cookiePath = cookiePath
+	return tc, nil
+}
+
+// setCookieEnv sets the GOVIRAL_TWIKIT_COOKIES_PATH env var on the command
+// if a custom cookie path is configured.
+func (c *TwikitClient) setCookieEnv(cmd *exec.Cmd) {
+	if c.cookiePath != "" {
+		cmd.Env = append(os.Environ(), "GOVIRAL_TWIKIT_COOKIES_PATH="+c.cookiePath)
+	}
+}
+
 // FetchMyPosts fetches the user's tweets via the twikit Python subprocess.
 func (c *TwikitClient) FetchMyPosts(ctx context.Context, limit int) ([]models.Post, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
 		"fetch_user_tweets", c.username, strconv.Itoa(limit))
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -83,6 +104,7 @@ func (c *TwikitClient) FetchMyPosts(ctx context.Context, limit int) ([]models.Po
 func (c *TwikitClient) ExtractCookies(ctx context.Context) error {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "extract_cookies")
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -121,11 +143,11 @@ func (c *TwikitClient) LoginWithCookies(ctx context.Context, authToken string, c
 		return fmt.Errorf("marshaling cookies: %w", err)
 	}
 
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
-	if err := os.MkdirAll(filepath.Dir(cookiePath), 0755); err != nil {
+	cp := c.resolvedCookiePath()
+	if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
 	}
-	if err := os.WriteFile(cookiePath, data, 0600); err != nil {
+	if err := os.WriteFile(cp, data, 0600); err != nil {
 		return fmt.Errorf("writing cookie file: %w", err)
 	}
 	return nil
@@ -133,6 +155,14 @@ func (c *TwikitClient) LoginWithCookies(ctx context.Context, authToken string, c
 
 // CookieFilePath returns the path to the twikit cookie file.
 func (c *TwikitClient) CookieFilePath() string {
+	return c.resolvedCookiePath()
+}
+
+// resolvedCookiePath returns the custom cookie path if set, else the default global path.
+func (c *TwikitClient) resolvedCookiePath() string {
+	if c.cookiePath != "" {
+		return c.cookiePath
+	}
 	return filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
 }
 
@@ -150,6 +180,7 @@ func (c *TwikitClient) PostTweet(ctx context.Context, text string) (string, erro
 func (c *TwikitClient) runPostTweet(ctx context.Context, text string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text)
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -174,6 +205,7 @@ func (c *TwikitClient) PostQuoteTweet(ctx context.Context, text string, quoteTwe
 func (c *TwikitClient) runPostQuoteTweet(ctx context.Context, text string, quoteTweetID string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_quote_tweet", text, quoteTweetID)
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -198,6 +230,7 @@ func (c *TwikitClient) PostReply(ctx context.Context, text string, inReplyToID s
 func (c *TwikitClient) runPostReply(ctx context.Context, text string, inReplyToID string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text, inReplyToID)
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -255,6 +288,7 @@ func (c *TwikitClient) UploadMedia(ctx context.Context, imageData []byte, mimeTy
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "upload_media", tmpFile.Name())
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -298,6 +332,7 @@ func (c *TwikitClient) runPostTweetWithMedia(ctx context.Context, text string, m
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text, "", string(mediaJSON))
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -327,6 +362,7 @@ func (c *TwikitClient) runPostReplyWithMedia(ctx context.Context, text string, i
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath, "create_tweet", text, inReplyToID, string(mediaJSON))
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -342,6 +378,7 @@ func (c *TwikitClient) ScheduleTweet(ctx context.Context, text string, scheduled
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
 		"schedule_tweet", text, strconv.FormatInt(scheduledAtUnix, 10))
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -371,6 +408,7 @@ func (c *TwikitClient) ScheduleQuoteTweet(ctx context.Context, text string, quot
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
 		"schedule_quote_tweet", text, quoteTweetID, strconv.FormatInt(scheduledAtUnix, 10))
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -421,6 +459,7 @@ func (c *TwikitClient) runSearchTrending(ctx context.Context, niches []string, p
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.pythonPath, c.scriptPath,
 		"search_trending", string(nichesJSON), strconv.Itoa(minLikes), strconv.Itoa(limit), period)
+	c.setCookieEnv(cmd)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 

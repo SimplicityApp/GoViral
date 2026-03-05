@@ -27,6 +27,7 @@ var linkitinScript []byte
 type LinkitinClient struct {
 	pythonPath string
 	scriptPath string
+	configDir  string // custom config dir for cookie isolation; empty means use default
 }
 
 // NewLinkitinClient creates a LinkitinClient. Returns an error if python3/python
@@ -47,6 +48,17 @@ func NewLinkitinClient() (*LinkitinClient, error) {
 		pythonPath: pythonPath,
 		scriptPath: scriptPath,
 	}, nil
+}
+
+// NewLinkitinClientWithConfigDir creates a LinkitinClient that uses a custom config directory
+// for cookie storage. The linkitin bridge script reads cookies from {configDir}/linkitin_cookies.json.
+func NewLinkitinClientWithConfigDir(configDir string) (*LinkitinClient, error) {
+	lc, err := NewLinkitinClient()
+	if err != nil {
+		return nil, err
+	}
+	lc.configDir = configDir
+	return lc, nil
 }
 
 // ExtractCookies extracts LinkedIn session cookies from Chrome and saves them
@@ -574,6 +586,9 @@ func (c *LinkitinClient) runCommand(ctx context.Context, cmd linkitinCommand) (m
 
 	var stdout, stderr bytes.Buffer
 	proc := exec.CommandContext(ctx, c.pythonPath, c.scriptPath)
+	if c.configDir != "" {
+		proc.Env = append(os.Environ(), "GOVIRAL_CONFIG_DIR="+c.configDir)
+	}
 	proc.Stdin = bytes.NewReader(cmdJSON)
 	proc.Stdout = &stdout
 	proc.Stderr = &stderr
