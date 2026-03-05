@@ -92,8 +92,9 @@ type ConfigResponse struct {
 	GitHub         ConfigGitHubResponse   `json:"github"`
 	YouTube        ConfigYouTubeResponse  `json:"youtube"`
 	TikTok         ConfigTikTokResponse   `json:"tiktok"`
-	Niches         []string               `json:"niches"`
-	LinkedInNiches []string               `json:"linkedin_niches"`
+	Niches          []string               `json:"niches"`
+	LinkedInNiches  []string               `json:"linkedin_niches"`
+	SelfDescription string                 `json:"self_description"`
 }
 
 type ConfigClaudeResponse struct {

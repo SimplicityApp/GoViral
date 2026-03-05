@@ -49,7 +49,8 @@ type DiscoverTrendingRequest struct {
 }
 
 type BuildPersonaRequest struct {
-	Platform string `json:"platform"`
+	Platform        string `json:"platform"`
+	SelfDescription string `json:"self_description,omitempty"`
 }
 
 type GenerateRequest struct {
@@ -78,14 +79,15 @@ type UpdateStatusRequest struct {
 }
 
 type UpdateConfigRequest struct {
-	Claude         *ClaudeConfigUpdate   `json:"claude,omitempty"`
-	Gemini         *GeminiConfigUpdate   `json:"gemini,omitempty"`
-	X              *XConfigUpdate        `json:"x,omitempty"`
-	LinkedIn       *LinkedInConfigUpdate `json:"linkedin,omitempty"`
-	YouTube        *YouTubeConfigUpdate  `json:"youtube,omitempty"`
-	TikTok         *TikTokConfigUpdate   `json:"tiktok,omitempty"`
-	Niches         *[]string             `json:"niches,omitempty"`
-	LinkedInNiches *[]string             `json:"linkedin_niches,omitempty"`
+	Claude          *ClaudeConfigUpdate   `json:"claude,omitempty"`
+	Gemini          *GeminiConfigUpdate   `json:"gemini,omitempty"`
+	X               *XConfigUpdate        `json:"x,omitempty"`
+	LinkedIn        *LinkedInConfigUpdate `json:"linkedin,omitempty"`
+	YouTube         *YouTubeConfigUpdate  `json:"youtube,omitempty"`
+	TikTok          *TikTokConfigUpdate   `json:"tiktok,omitempty"`
+	Niches          *[]string             `json:"niches,omitempty"`
+	LinkedInNiches  *[]string             `json:"linkedin_niches,omitempty"`
+	SelfDescription *string               `json:"self_description,omitempty"`
 }
 
 type ClaudeConfigUpdate struct {

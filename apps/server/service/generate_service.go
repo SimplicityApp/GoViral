@@ -66,7 +66,10 @@ func (s *GenerateService) Generate(ctx context.Context, userID string, req dto.G
 		return nil, fmt.Errorf("getting persona: %w", err)
 	}
 	if persona == nil {
-		return nil, fmt.Errorf("no persona found for platform %s; build persona first", targetPlatform)
+		persona = &models.Persona{
+			Platform: targetPlatform,
+			Profile:  models.DefaultPersonaProfile(targetPlatform),
+		}
 	}
 
 	total := len(req.TrendingPostIDs)
@@ -215,7 +218,10 @@ func (s *GenerateService) GenerateComment(ctx context.Context, userID string, tr
 		return nil, fmt.Errorf("getting persona: %w", err)
 	}
 	if persona == nil {
-		return nil, fmt.Errorf("no persona found for platform %s; build persona first", platform)
+		persona = &models.Persona{
+			Platform: platform,
+			Profile:  models.DefaultPersonaProfile(platform),
+		}
 	}
 
 	results, err := gen.GenerateComment(ctx, models.GenerateCommentRequest{

@@ -42,6 +42,9 @@ type UserConfig struct {
 	// Niches
 	Niches         []string `json:"niches,omitempty"`
 	LinkedInNiches []string `json:"linkedin_niches,omitempty"`
+
+	// Self-description for persona building
+	SelfDescription string `json:"self_description,omitempty"`
 }
 
 // MergedXConfig returns an XConfig starting from global app credentials,

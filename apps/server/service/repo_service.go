@@ -330,7 +330,10 @@ func (s *RepoService) GenerateFromCommits(ctx context.Context, userID string, re
 		return nil, fmt.Errorf("getting persona for %s: %w", targetPlatform, err)
 	}
 	if persona == nil {
-		return nil, fmt.Errorf("no persona found for platform %s; build persona first", targetPlatform)
+		persona = &models.Persona{
+			Platform: targetPlatform,
+			Profile:  models.DefaultPersonaProfile(targetPlatform),
+		}
 	}
 
 	client := claude.NewClient(s.cfg.Claude.APIKey, s.cfg.Claude.Model)

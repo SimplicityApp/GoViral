@@ -45,9 +45,17 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 
 	userID := middleware.UserIDFromContext(r.Context())
 
+	selfDesc := req.SelfDescription
+	if selfDesc == "" {
+		uc, _ := h.db.GetUserConfig(userID)
+		if uc != nil {
+			selfDesc = uc.SelfDescription
+		}
+	}
+
 	if WantsSSE(r) {
 		progress := make(chan dto.ProgressEvent, 10)
-		go h.doBuild(r.Context(), userID, req.Platform, progress)
+		go h.doBuild(r.Context(), userID, req.Platform, selfDesc, progress)
 		StreamProgress(w, r, progress)
 		return
 	}
@@ -55,7 +63,7 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 	opID := h.store.Create()
 	go func() {
 		progress := make(chan dto.ProgressEvent, 10)
-		go h.doBuild(context.Background(), userID, req.Platform, progress)
+		go h.doBuild(context.Background(), userID, req.Platform, selfDesc, progress)
 		var lastErr string
 		for evt := range progress {
 			if evt.Type == "error" {
@@ -75,7 +83,7 @@ func (h *BuildPersonaHandler) Post(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platform string, progress chan<- dto.ProgressEvent) {
+func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platform string, selfDescription string, progress chan<- dto.ProgressEvent) {
 	defer close(progress)
 
 	uc, _ := h.db.GetUserConfig(userID)
@@ -108,21 +116,29 @@ func (h *BuildPersonaHandler) doBuild(ctx context.Context, userID string, platfo
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("loading posts: %v", err)}
 		return
 	}
-	if len(posts) == 0 {
-		progress <- dto.ProgressEvent{Type: "error", Message: "no posts found; fetch posts first"}
+	if len(posts) == 0 && selfDescription == "" {
+		progress <- dto.ProgressEvent{Type: "error", Message: "no posts found and no self-description provided; fetch posts or describe yourself first"}
 		return
 	}
 
-	progress <- dto.ProgressEvent{
-		Type:       "progress",
-		Message:    fmt.Sprintf("Analyzing %d posts with Claude...", len(posts)),
-		Percentage: 30,
+	if len(posts) > 0 {
+		progress <- dto.ProgressEvent{
+			Type:       "progress",
+			Message:    fmt.Sprintf("Analyzing %d posts with Claude...", len(posts)),
+			Percentage: 30,
+		}
+	} else {
+		progress <- dto.ProgressEvent{
+			Type:       "progress",
+			Message:    "Building persona from your description...",
+			Percentage: 30,
+		}
 	}
 
 	client := claude.NewClient(claudeCfg.APIKey, claudeCfg.Model)
 	analyzer := persona.NewAnalyzer(client)
 
-	profile, err := analyzer.BuildProfile(ctx, posts, platform)
+	profile, err := analyzer.BuildProfile(ctx, posts, platform, selfDescription)
 	if err != nil {
 		slog.Error("building persona", "error", err)
 		progress <- dto.ProgressEvent{Type: "error", Message: fmt.Sprintf("building persona: %v", err)}

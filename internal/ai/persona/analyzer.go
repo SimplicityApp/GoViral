@@ -22,12 +22,21 @@ func NewAnalyzer(client claude.MessageSender) *Analyzer {
 }
 
 // BuildProfile analyzes posts and builds a PersonaProfile.
-func (a *Analyzer) BuildProfile(ctx context.Context, posts []models.Post, platform string) (*models.PersonaProfile, error) {
-	if len(posts) == 0 {
-		return nil, fmt.Errorf("building persona profile: no posts provided")
+func (a *Analyzer) BuildProfile(ctx context.Context, posts []models.Post, platform string, selfDescription string) (*models.PersonaProfile, error) {
+	if len(posts) == 0 && selfDescription == "" {
+		return nil, fmt.Errorf("building persona profile: no posts or self-description provided")
 	}
 
-	userMessage := formatPosts(posts)
+	var userMessage string
+	if selfDescription != "" {
+		userMessage = fmt.Sprintf("The user describes themselves as:\n%s\n\n", selfDescription)
+	}
+	if len(posts) > 0 {
+		userMessage += formatPosts(posts)
+	}
+	if len(posts) == 0 {
+		userMessage += "No posts are available. Build the persona entirely from the self-description above."
+	}
 	systemPrompt := prompts.PersonaPrompt(prompts.Platform(platform))
 
 	response, err := a.client.SendMessageJSON(ctx, systemPrompt, userMessage, prompts.PersonaProfileSchema())

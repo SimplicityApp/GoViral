@@ -78,7 +78,7 @@ func runProfileBuild(cmd *cobra.Command, args []string) error {
 	// Determine platform — use "all" if we have posts from multiple platforms
 	platform := determinePlatform(posts)
 
-	profile, err := analyzer.BuildProfile(ctx, posts, platform)
+	profile, err := analyzer.BuildProfile(ctx, posts, platform, "")
 	if err != nil {
 		return fmt.Errorf("building persona profile: %w", err)
 	}

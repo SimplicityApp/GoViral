@@ -67,7 +67,7 @@ func TestBuildProfile_Success(t *testing.T) {
 	mock := &mockMessageSender{response: personaJSON}
 	analyzer := NewAnalyzer(mock)
 
-	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
+	profile, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x", "")
 	if err != nil {
 		t.Fatalf("BuildProfile() error = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestBuildProfile_PlatformSpecificPrompt(t *testing.T) {
 	analyzer := NewAnalyzer(mock)
 
 	// X platform should use X-specific prompt
-	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x", "")
 	if err != nil {
 		t.Fatalf("BuildProfile(x) error = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestBuildProfile_PlatformSpecificPrompt(t *testing.T) {
 	}
 
 	// LinkedIn platform should use LinkedIn-specific prompt
-	_, err = analyzer.BuildProfile(context.Background(), samplePosts(), "linkedin")
+	_, err = analyzer.BuildProfile(context.Background(), samplePosts(), "linkedin", "")
 	if err != nil {
 		t.Fatalf("BuildProfile(linkedin) error = %v", err)
 	}
@@ -129,11 +129,11 @@ func TestBuildProfile_EmptyPosts(t *testing.T) {
 	mock := &mockMessageSender{response: "{}"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), nil, "x")
+	_, err := analyzer.BuildProfile(context.Background(), nil, "x", "")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for empty posts, got nil")
 	}
-	if !strings.Contains(err.Error(), "no posts provided") {
+	if !strings.Contains(err.Error(), "no posts") {
 		t.Errorf("expected error about no posts, got: %v", err)
 	}
 }
@@ -142,7 +142,7 @@ func TestBuildProfile_EmptyPostSlice(t *testing.T) {
 	mock := &mockMessageSender{response: "{}"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), []models.Post{}, "x")
+	_, err := analyzer.BuildProfile(context.Background(), []models.Post{}, "x", "")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for empty post slice, got nil")
 	}
@@ -152,7 +152,7 @@ func TestBuildProfile_InvalidJSON(t *testing.T) {
 	mock := &mockMessageSender{response: "this is not valid json at all"}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x", "")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error for invalid JSON response, got nil")
 	}
@@ -162,7 +162,7 @@ func TestBuildProfile_ClientError(t *testing.T) {
 	mock := &mockMessageSender{err: errors.New("API error")}
 	analyzer := NewAnalyzer(mock)
 
-	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x")
+	_, err := analyzer.BuildProfile(context.Background(), samplePosts(), "x", "")
 	if err == nil {
 		t.Fatal("BuildProfile() expected error when client fails, got nil")
 	}

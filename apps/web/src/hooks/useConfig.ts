@@ -55,6 +55,7 @@ export interface AppConfig {
   };
   niches: string[];
   linkedin_niches: string[];
+  self_description: string;
 }
 
 export interface UpdateConfigPayload {
@@ -66,6 +67,7 @@ export interface UpdateConfigPayload {
   tiktok?: { username?: string }
   niches?: string[]
   linkedin_niches?: string[]
+  self_description?: string
 }
 
 export function useConfigQuery() {

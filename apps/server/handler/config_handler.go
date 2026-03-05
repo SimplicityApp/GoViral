@@ -110,8 +110,9 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 			HasAuth:      uc.TikTokAccessToken != "",
 			Username:     tiktokUsername,
 		},
-		Niches:         niches,
-		LinkedInNiches: linkedInNiches,
+		Niches:          niches,
+		LinkedInNiches:  linkedInNiches,
+		SelfDescription: uc.SelfDescription,
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, resp)

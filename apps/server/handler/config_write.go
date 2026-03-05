@@ -86,6 +86,10 @@ func (h *ConfigWriteHandler) Update(w http.ResponseWriter, r *http.Request) {
 		uc.LinkedInNiches = *req.LinkedInNiches
 	}
 
+	if req.SelfDescription != nil {
+		uc.SelfDescription = *req.SelfDescription
+	}
+
 	// Save to DB (NOT to config.yaml)
 	if err := h.db.SaveUserConfig(userID, uc); err != nil {
 		reqID := middleware.RequestIDFromContext(r.Context())

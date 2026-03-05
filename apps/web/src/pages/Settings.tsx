@@ -129,6 +129,7 @@ export function Settings() {
     x_username: '',
     niches: [] as string[],
     linkedin_niches: [] as string[],
+    self_description: '',
   })
 
   useEffect(() => {
@@ -139,6 +140,7 @@ export function Settings() {
         x_username: config.x.username || '',
         niches: config.niches || [],
         linkedin_niches: config.linkedin_niches || [],
+        self_description: config.self_description || '',
       })
       setXCookieForm({
         auth_token: config.x.auth_token || '',
@@ -167,6 +169,10 @@ export function Settings() {
     payload.niches = form.niches
     payload.linkedin_niches = form.linkedin_niches
 
+    if (form.self_description !== (config?.self_description ?? '')) {
+      payload.self_description = form.self_description
+    }
+
     updateConfig.mutate(payload, {
       onSuccess: () => toast.success('Settings saved'),
       onError: () => toast.error('Failed to save settings'),
@@ -178,6 +184,33 @@ export function Settings() {
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h2 className="mb-6 text-lg font-semibold text-[var(--color-text)]">Settings</h2>
+
+      {/* About You */}
+      <section className="mb-8">
+        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+          About You
+        </h3>
+        <div className="rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+          <label className="mb-1.5 block text-sm font-medium text-[var(--color-text)]">
+            Self-Description
+          </label>
+          <textarea
+            value={form.self_description}
+            onChange={(e) => setForm((f) => ({ ...f, self_description: e.target.value }))}
+            onBlur={() => {
+              if (form.self_description !== (config?.self_description ?? '')) {
+                updateConfig.mutate({ self_description: form.self_description })
+              }
+            }}
+            rows={3}
+            placeholder="Describe yourself, your expertise, and your content style..."
+            className="w-full rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)]"
+          />
+          <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
+            Used when building your persona profile. Helps create a more accurate voice even with few posts.
+          </p>
+        </div>
+      </section>
 
       {/* AI API Keys */}
       <section className="mb-8">

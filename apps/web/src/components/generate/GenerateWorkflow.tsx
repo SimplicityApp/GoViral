@@ -6,10 +6,12 @@ import { useTrendingQuery } from '@/hooks/useTrending'
 import { useGenerateMutation } from '@/hooks/useGenerate'
 import { useUpdateStatusMutation } from '@/hooks/useHistory'
 import { useRepoGenerate } from '@/hooks/useRepoGenerate'
+import { usePersonaQuery } from '@/hooks/usePersona'
 import { PostSelector } from './PostSelector'
 import { GenerateSettings, type GenerateConfig } from './GenerateSettings'
 import { VariationCard } from './VariationCard'
-import { ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
+import { BuildPersonaModal } from './BuildPersonaModal'
+import { AlertTriangle, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react'
 
 export function GenerateWorkflow() {
   const activePlatform = usePlatformParam()
@@ -89,6 +91,8 @@ export function GenerateWorkflow() {
   const generate = useGenerateMutation()
   const repoGenerate = useRepoGenerate()
   const updateStatus = useUpdateStatusMutation()
+  const { data: persona, isLoading: personaLoading } = usePersonaQuery(activePlatform)
+  const [showPersonaModal, setShowPersonaModal] = useState(false)
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -175,6 +179,23 @@ export function GenerateWorkflow() {
           <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">
             {activePlatform === 'linkedin' ? 'Repost mode' : 'Quote Tweet mode'}
           </span>
+        </div>
+      )}
+
+      {!personaLoading && !persona && (
+        <div className="mb-4 flex items-center justify-between rounded-[var(--radius-card)] border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-400" />
+            <span className="text-sm text-amber-300">
+              No persona built yet. Content will use a generic voice. Build your persona for personalized results.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowPersonaModal(true)}
+            className="ml-4 shrink-0 rounded-[var(--radius-button)] bg-amber-500/20 px-3 py-1.5 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
+          >
+            Build Persona
+          </button>
         </div>
       )}
 
@@ -316,6 +337,12 @@ export function GenerateWorkflow() {
           )}
         </div>
       )}
+
+      <BuildPersonaModal
+        open={showPersonaModal}
+        onClose={() => setShowPersonaModal(false)}
+        platform={activePlatform}
+      />
     </div>
   )
 }
