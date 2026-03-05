@@ -40,12 +40,14 @@ func (h *LinkedInCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Read extracted cookies from the global file, save to per-user DB, then clean up.
 	userID := middleware.UserIDFromContext(r.Context())
 	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
 	if data, err := os.ReadFile(cookiePath); err == nil {
 		uc, _ := h.db.GetUserConfig(userID)
 		uc.LinkitinCookiesJSON = string(data)
 		h.db.SaveUserConfig(userID, uc)
+		os.Remove(cookiePath)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -59,6 +61,7 @@ type loginCookiesRequest struct {
 }
 
 // LoginCookies authenticates with manually provided LinkedIn cookies.
+// Saves directly to per-user DB without writing to the global cookie file.
 func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 	var req loginCookiesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -74,27 +77,28 @@ func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	lc, err := linkedin.NewLinkitinClient()
+	userID := middleware.UserIDFromContext(r.Context())
+
+	// Build cookie JSON directly and save to DB — no global file needed.
+	cookies := map[string]string{
+		"li_at":      req.LiAt,
+		"JSESSIONID": req.JSessionID,
+	}
+	data, err := json.MarshalIndent(cookies, "", "  ")
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "linkitin unavailable: " + err.Error(),
+			"error": "failed to marshal cookies: " + err.Error(),
 		})
 		return
 	}
 
-	if err := lc.LoginWithCookies(r.Context(), req.LiAt, req.JSessionID); err != nil {
+	uc, _ := h.db.GetUserConfig(userID)
+	uc.LinkitinCookiesJSON = string(data)
+	if err := h.db.SaveUserConfig(userID, uc); err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "failed to login with cookies: " + err.Error(),
+			"error": "failed to save cookies: " + err.Error(),
 		})
 		return
-	}
-
-	userID := middleware.UserIDFromContext(r.Context())
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
-	if data, err := os.ReadFile(cookiePath); err == nil {
-		uc, _ := h.db.GetUserConfig(userID)
-		uc.LinkitinCookiesJSON = string(data)
-		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -102,11 +106,11 @@ func (h *LinkedInCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// Status checks whether linkitin cookies are available.
+// Status checks whether linkitin cookies are available for the current user.
 func (h *LinkedInCookiesHandler) Status(w http.ResponseWriter, r *http.Request) {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
-	_, err := os.Stat(cookiePath)
+	userID := middleware.UserIDFromContext(r.Context())
+	uc, _ := h.db.GetUserConfig(userID)
 	middleware.WriteJSON(w, http.StatusOK, map[string]bool{
-		"available": err == nil,
+		"available": uc != nil && uc.LinkitinCookiesJSON != "",
 	})
 }

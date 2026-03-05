@@ -10,32 +10,34 @@ import (
 )
 
 // Package-level factory variables. Tests can swap these to inject mocks.
-var newXPoster = func(cfg config.XConfig) models.PlatformPoster {
-	return x.NewFallbackClient(cfg)
+// Each factory accepts a cookie path (twikit) or config dir (linkitin) for per-user isolation.
+// Pass empty string to use the default global path.
+var newXPoster = func(cfg config.XConfig, cookiePath string) models.PlatformPoster {
+	return x.NewFallbackClientWithCookiePath(cfg, cookiePath)
 }
 
-var newXScheduler = func(cfg config.XConfig) models.PlatformScheduler {
-	return x.NewFallbackClient(cfg)
+var newXScheduler = func(cfg config.XConfig, cookiePath string) models.PlatformScheduler {
+	return x.NewFallbackClientWithCookiePath(cfg, cookiePath)
 }
 
-var newXQuotePoster = func(cfg config.XConfig) models.QuotePoster {
-	return x.NewFallbackClient(cfg)
+var newXQuotePoster = func(cfg config.XConfig, cookiePath string) models.QuotePoster {
+	return x.NewFallbackClientWithCookiePath(cfg, cookiePath)
 }
 
-var newXQuoteScheduler = func(cfg config.XConfig) models.QuoteScheduler {
-	return x.NewFallbackClient(cfg)
+var newXQuoteScheduler = func(cfg config.XConfig, cookiePath string) models.QuoteScheduler {
+	return x.NewFallbackClientWithCookiePath(cfg, cookiePath)
 }
 
-var newLinkedInPoster = func(cfg config.LinkedInConfig) models.LinkedInPoster {
-	return linkedin.NewFallbackClient(cfg, nil)
+var newLinkedInPoster = func(cfg config.LinkedInConfig, configDir string) models.LinkedInPoster {
+	return linkedin.NewFallbackClientWithConfigDir(cfg, nil, configDir)
 }
 
-var newLinkedInReposter = func(cfg config.LinkedInConfig) models.LinkedInReposter {
-	return linkedin.NewFallbackClient(cfg, nil)
+var newLinkedInReposter = func(cfg config.LinkedInConfig, configDir string) models.LinkedInReposter {
+	return linkedin.NewFallbackClientWithConfigDir(cfg, nil, configDir)
 }
 
-var newLinkedInCommenter = func(cfg config.LinkedInConfig) models.LinkedInCommenter {
-	return linkedin.NewFallbackClient(cfg, nil)
+var newLinkedInCommenter = func(cfg config.LinkedInConfig, configDir string) models.LinkedInCommenter {
+	return linkedin.NewFallbackClientWithConfigDir(cfg, nil, configDir)
 }
 
 var newYouTubePoster = func(cfg config.YouTubeConfig) models.YouTubePoster {

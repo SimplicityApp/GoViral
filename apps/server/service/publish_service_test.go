@@ -141,7 +141,7 @@ func TestPublishX_Comment(t *testing.T) {
 	})
 
 	mock := &mockXPoster{returnID: "reply-456"}
-	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
+	swapFactory(t, &newXPoster, func(_ config.XConfig, _ string) models.PlatformPoster { return mock })
 
 	ids, parts, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
@@ -173,7 +173,7 @@ func TestPublishX_RegularPost(t *testing.T) {
 	})
 
 	mock := &mockXPoster{returnID: "tweet-789"}
-	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
+	swapFactory(t, &newXPoster, func(_ config.XConfig, _ string) models.PlatformPoster { return mock })
 
 	ids, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
@@ -196,7 +196,7 @@ func TestPublishLinkedIn_Comment(t *testing.T) {
 	})
 
 	mock := &mockLinkedInCommenter{returnID: "urn:li:comment:456"}
-	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
+	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig, _ string) models.LinkedInCommenter { return mock })
 
 	ids, parts, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
@@ -227,7 +227,7 @@ func TestPublishLinkedIn_RegularPost(t *testing.T) {
 	})
 
 	mock := &mockLinkedInPoster{returnID: "urn:li:share:789"}
-	swapFactory(t, &newLinkedInPoster, func(_ config.LinkedInConfig) models.LinkedInPoster { return mock })
+	swapFactory(t, &newLinkedInPoster, func(_ config.LinkedInConfig, _ string) models.LinkedInPoster { return mock })
 
 	ids, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
@@ -253,7 +253,7 @@ func TestPublish_DispatchesCommentToCorrectPlatform(t *testing.T) {
 		})
 
 		mock := &mockXPoster{returnID: "reply-x"}
-		swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
+		swapFactory(t, &newXPoster, func(_ config.XConfig, _ string) models.PlatformPoster { return mock })
 
 		ids, _, err := svc.Publish(context.Background(), testUserID, id, false)
 		if err != nil {
@@ -276,7 +276,7 @@ func TestPublish_DispatchesCommentToCorrectPlatform(t *testing.T) {
 		})
 
 		mock := &mockLinkedInCommenter{returnID: "urn:li:comment:new"}
-		swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
+		swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig, _ string) models.LinkedInCommenter { return mock })
 
 		ids, _, err := svc.Publish(context.Background(), testUserID, id, false)
 		if err != nil {
@@ -302,7 +302,7 @@ func TestPublishX_QuoteTweet(t *testing.T) {
 	})
 
 	mock := &mockXQuotePoster{returnID: "qt-001"}
-	swapFactory(t, &newXQuotePoster, func(_ config.XConfig) models.QuotePoster { return mock })
+	swapFactory(t, &newXQuotePoster, func(_ config.XConfig, _ string) models.QuotePoster { return mock })
 
 	ids, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err != nil {
@@ -325,7 +325,7 @@ func TestPublishLinkedIn_Repost(t *testing.T) {
 	})
 
 	mock := &mockLinkedInReposter{returnID: "urn:li:share:reposted"}
-	swapFactory(t, &newLinkedInReposter, func(_ config.LinkedInConfig) models.LinkedInReposter { return mock })
+	swapFactory(t, &newLinkedInReposter, func(_ config.LinkedInConfig, _ string) models.LinkedInReposter { return mock })
 
 	ids, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err != nil {
@@ -431,7 +431,7 @@ func TestPublishX_CommentError(t *testing.T) {
 	})
 
 	mock := &mockXPoster{returnErr: fmt.Errorf("network error")}
-	swapFactory(t, &newXPoster, func(_ config.XConfig) models.PlatformPoster { return mock })
+	swapFactory(t, &newXPoster, func(_ config.XConfig, _ string) models.PlatformPoster { return mock })
 
 	_, _, err := svc.PublishX(context.Background(), testUserID, id, false)
 	if err == nil {
@@ -448,7 +448,7 @@ func TestPublishLinkedIn_CommentError(t *testing.T) {
 	})
 
 	mock := &mockLinkedInCommenter{returnErr: fmt.Errorf("api error")}
-	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig) models.LinkedInCommenter { return mock })
+	swapFactory(t, &newLinkedInCommenter, func(_ config.LinkedInConfig, _ string) models.LinkedInCommenter { return mock })
 
 	_, _, err := svc.PublishLinkedIn(context.Background(), testUserID, id)
 	if err == nil {

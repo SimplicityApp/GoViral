@@ -86,6 +86,12 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 
 	uc, _ := h.db.GetUserConfig(userID)
 
+	// Write per-user cookies to temp files for process isolation.
+	twikitCookiePath, twikitCleanup, _ := writeTwikitCookieTempFile(uc.TwikitCookiesJSON)
+	defer twikitCleanup()
+	linkitinConfigDir, linkitinCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
+	defer linkitinCleanup()
+
 	for _, p := range platforms {
 		var niches []string
 		switch p {
@@ -116,10 +122,10 @@ func (h *DiscoverTrendingHandler) doDiscover(ctx context.Context, userID string,
 
 		switch p {
 		case "x":
-			client := x.NewFallbackClient(uc.MergedXConfig(*h.cfg))
+			client := x.NewFallbackClientWithCookiePath(uc.MergedXConfig(*h.cfg), twikitCookiePath)
 			posts, err = client.FetchTrendingPosts(ctx, niches, req.Period, req.MinLikes, req.Limit)
 		case "linkedin":
-			client := linkedin.NewFallbackClient(uc.MergedLinkedInConfig(*h.cfg), nil)
+			client := linkedin.NewFallbackClientWithConfigDir(uc.MergedLinkedInConfig(*h.cfg), nil, linkitinConfigDir)
 			posts, err = client.FetchTrendingPosts(ctx, niches, req.Period, req.MinLikes, req.Limit)
 		}
 

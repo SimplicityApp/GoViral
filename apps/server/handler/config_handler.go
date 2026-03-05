@@ -3,8 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/shuhao/goviral/apps/server/dto"
 	"github.com/shuhao/goviral/apps/server/middleware"
@@ -38,44 +36,21 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 	geminiCfg := uc.ResolvedGeminiConfig(*h.cfg)
 	geminiUsed, _ := h.db.GetAIUsage(userID, "gemini")
 
-	xUsername := h.cfg.X.Username
-	if uc.XUsername != "" {
-		xUsername = uc.XUsername
-	}
+	xUsername := uc.XUsername
+	channelID := uc.YouTubeChannelID
+	tiktokUsername := uc.TikTokUsername
 
-	channelID := h.cfg.YouTube.ChannelID
-	if uc.YouTubeChannelID != "" {
-		channelID = uc.YouTubeChannelID
-	}
+	hasTwikitAuth := uc.TwikitCookiesJSON != ""
+	hasLinkitinAuth := uc.LinkitinCookiesJSON != ""
 
-	tiktokUsername := h.cfg.TikTok.Username
-	if uc.TikTokUsername != "" {
-		tiktokUsername = uc.TikTokUsername
-	}
+	authToken := maskedCookieFromJSON(uc.TwikitCookiesJSON, "auth_token")
+	ct0 := maskedCookieFromJSON(uc.TwikitCookiesJSON, "ct0")
 
-	hasTwikitAuth := uc.TwikitCookiesJSON != "" || twikitCookiesExist()
-	hasLinkitinAuth := uc.LinkitinCookiesJSON != "" || linkitinCookiesExist()
+	liAt := maskedCookieFromJSON(uc.LinkitinCookiesJSON, "li_at")
+	jsessionID := maskedCookieFromJSON(uc.LinkitinCookiesJSON, "JSESSIONID")
 
-	var authToken, ct0 string
-	if uc.TwikitCookiesJSON != "" {
-		authToken = maskedCookieFromJSON(uc.TwikitCookiesJSON, "auth_token")
-		ct0 = maskedCookieFromJSON(uc.TwikitCookiesJSON, "ct0")
-	} else {
-		authToken = maskedTwikitCookie("auth_token")
-		ct0 = maskedTwikitCookie("ct0")
-	}
-
-	var liAt, jsessionID string
-	if uc.LinkitinCookiesJSON != "" {
-		liAt = maskedCookieFromJSON(uc.LinkitinCookiesJSON, "li_at")
-		jsessionID = maskedCookieFromJSON(uc.LinkitinCookiesJSON, "JSESSIONID")
-	} else {
-		liAt = maskedLinkitinCookie("li_at")
-		jsessionID = maskedLinkitinCookie("JSESSIONID")
-	}
-
-	niches := uc.MergedNiches(*h.cfg)
-	linkedInNiches := uc.MergedLinkedInNiches(*h.cfg)
+	niches := uc.Niches
+	linkedInNiches := uc.LinkedInNiches
 	if niches == nil {
 		niches = []string{}
 	}
@@ -121,7 +96,7 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		GitHub: dto.ConfigGitHubResponse{
 			HasPAT:       h.cfg.GitHub.PersonalAccessToken != "",
 			HasOAuth:     h.cfg.GitHub.ClientID != "",
-			HasAuth:      uc.GitHubAccessToken != "" || h.cfg.GitHub.PersonalAccessToken != "",
+			HasAuth:      uc.GitHubAccessToken != "",
 			DefaultOwner: h.cfg.GitHub.DefaultOwner,
 			DefaultRepo:  h.cfg.GitHub.DefaultRepo,
 		},
@@ -142,18 +117,6 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 	middleware.WriteJSON(w, http.StatusOK, resp)
 }
 
-func twikitCookiesExist() bool {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
-	_, err := os.Stat(cookiePath)
-	return err == nil
-}
-
-func linkitinCookiesExist() bool {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json")
-	_, err := os.Stat(cookiePath)
-	return err == nil
-}
-
 func maskSecret(s string) string {
 	if s == "" {
 		return ""
@@ -162,25 +125,6 @@ func maskSecret(s string) string {
 		return s[:2] + "****"
 	}
 	return s[:4] + "****" + s[len(s)-2:]
-}
-
-func readCookieFile(path string) map[string]string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil
-	}
-	result := make(map[string]string, len(raw))
-	for k, v := range raw {
-		var s string
-		if json.Unmarshal(v, &s) == nil {
-			result[k] = s
-		}
-	}
-	return result
 }
 
 // maskedCookieFromJSON parses a JSON cookie string and returns the masked value for key.
@@ -201,14 +145,4 @@ func maskedCookieFromJSON(cookiesJSON, key string) string {
 		return ""
 	}
 	return maskSecret(s)
-}
-
-func maskedTwikitCookie(key string) string {
-	cookies := readCookieFile(filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json"))
-	return maskSecret(cookies[key])
-}
-
-func maskedLinkitinCookie(key string) string {
-	cookies := readCookieFile(filepath.Join(config.DefaultConfigDir(), "linkitin_cookies.json"))
-	return maskSecret(cookies[key])
 }

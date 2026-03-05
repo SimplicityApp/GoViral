@@ -79,6 +79,12 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 
 	uc, _ := h.db.GetUserConfig(userID)
 
+	// Write per-user cookies to temp files for process isolation.
+	twikitCookiePath, twikitCleanup, _ := writeTwikitCookieTempFile(uc.TwikitCookiesJSON)
+	defer twikitCleanup()
+	linkitinConfigDir, linkitinCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
+	defer linkitinCleanup()
+
 	for _, p := range platforms {
 		progress <- dto.ProgressEvent{
 			Type:       "progress",
@@ -91,10 +97,10 @@ func (h *FetchPostsHandler) doFetch(ctx context.Context, userID string, platform
 
 		switch p {
 		case "x":
-			client := x.NewFallbackClient(uc.MergedXConfig(*h.cfg))
+			client := x.NewFallbackClientWithCookiePath(uc.MergedXConfig(*h.cfg), twikitCookiePath)
 			posts, err = client.FetchMyPosts(ctx, 100)
 		case "linkedin":
-			client := linkedin.NewFallbackClient(uc.MergedLinkedInConfig(*h.cfg), nil)
+			client := linkedin.NewFallbackClientWithConfigDir(uc.MergedLinkedInConfig(*h.cfg), nil, linkitinConfigDir)
 			posts, err = client.FetchMyPosts(ctx, 100)
 		default:
 			progress <- dto.ProgressEvent{

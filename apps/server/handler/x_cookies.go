@@ -46,11 +46,13 @@ func (h *XCookiesHandler) ExtractCookies(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Read extracted cookies from the global file, save to per-user DB, then clean up.
 	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
 	if data, err := os.ReadFile(cookiePath); err == nil {
 		uc, _ := h.db.GetUserConfig(userID)
 		uc.TwikitCookiesJSON = string(data)
 		h.db.SaveUserConfig(userID, uc)
+		os.Remove(cookiePath)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -64,6 +66,7 @@ type xLoginCookiesRequest struct {
 }
 
 // LoginCookies authenticates with manually provided X cookies.
+// Saves directly to per-user DB without writing to the global cookie file.
 func (h *XCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 	var req xLoginCookiesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -80,31 +83,27 @@ func (h *XCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := middleware.UserIDFromContext(r.Context())
-	username := h.cfg.X.Username
-	if uc, err := h.db.GetUserConfig(userID); err == nil && uc.XUsername != "" {
-		username = uc.XUsername
-	}
 
-	tc, err := x.NewTwikitClient(username)
+	// Build cookie JSON directly and save to DB — no global file needed.
+	cookies := map[string]string{
+		"auth_token": req.AuthToken,
+		"ct0":        req.Ct0,
+	}
+	data, err := json.MarshalIndent(cookies, "", "  ")
 	if err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "twikit unavailable: " + err.Error(),
+			"error": "failed to marshal cookies: " + err.Error(),
 		})
 		return
 	}
 
-	if err := tc.LoginWithCookies(r.Context(), req.AuthToken, req.Ct0); err != nil {
+	uc, _ := h.db.GetUserConfig(userID)
+	uc.TwikitCookiesJSON = string(data)
+	if err := h.db.SaveUserConfig(userID, uc); err != nil {
 		middleware.WriteJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "failed to save cookies: " + err.Error(),
 		})
 		return
-	}
-
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
-	if data, err := os.ReadFile(cookiePath); err == nil {
-		uc, _ := h.db.GetUserConfig(userID)
-		uc.TwikitCookiesJSON = string(data)
-		h.db.SaveUserConfig(userID, uc)
 	}
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]string{
@@ -112,11 +111,11 @@ func (h *XCookiesHandler) LoginCookies(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Status checks whether twikit cookies are available.
+// Status checks whether twikit cookies are available for the current user.
 func (h *XCookiesHandler) Status(w http.ResponseWriter, r *http.Request) {
-	cookiePath := filepath.Join(config.DefaultConfigDir(), "twikit_cookies.json")
-	_, err := os.Stat(cookiePath)
+	userID := middleware.UserIDFromContext(r.Context())
+	uc, _ := h.db.GetUserConfig(userID)
 	middleware.WriteJSON(w, http.StatusOK, map[string]bool{
-		"available": err == nil,
+		"available": uc != nil && uc.TwikitCookiesJSON != "",
 	})
 }

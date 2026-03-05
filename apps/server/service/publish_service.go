@@ -79,6 +79,8 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 
 	uc, _ := s.db.GetUserConfig(userID)
 	xCfg := uc.MergedXConfig(*s.cfg)
+	cookiePath, cookieCleanup, _ := writeTwikitCookieTempFile(uc.TwikitCookiesJSON)
+	defer cookieCleanup()
 
 	// Comment path
 	if gc.IsComment {
@@ -92,7 +94,7 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 	// Quote tweet path
 	if gc.IsRepost && gc.QuoteTweetID != "" {
 		log.Printf("publishing quote tweet for content %d (quoting %s)", contentID, gc.QuoteTweetID)
-		quotePoster := newXQuotePoster(xCfg)
+		quotePoster := newXQuotePoster(xCfg, cookiePath)
 		postID, err := quotePoster.PostQuoteTweet(ctx, gc.GeneratedContent, gc.QuoteTweetID)
 		if err != nil {
 			log.Printf("quote tweet publish failed for content %d: %v", contentID, err)
@@ -107,7 +109,7 @@ func (s *PublishService) PublishX(ctx context.Context, userID string, contentID 
 	result := thread.Split(gc.GeneratedContent, numbered)
 	parts := result.Parts
 
-	poster := newXPoster(xCfg)
+	poster := newXPoster(xCfg, cookiePath)
 
 	// If the content has a code image, attempt to post the first tweet with the image
 	// attached. Subsequent thread parts are posted as plain text.
@@ -175,6 +177,8 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 
 	uc, _ := s.db.GetUserConfig(userID)
 	linkedInCfg := uc.MergedLinkedInConfig(*s.cfg)
+	configDir, configDirCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
+	defer configDirCleanup()
 
 	// Comment path
 	if gc.IsComment {
@@ -188,7 +192,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 	// Repost path
 	if gc.IsRepost && gc.QuoteTweetID != "" {
 		log.Printf("publishing LinkedIn repost for content %d (quoting %s)", contentID, gc.QuoteTweetID)
-		reposter := newLinkedInReposter(linkedInCfg)
+		reposter := newLinkedInReposter(linkedInCfg, configDir)
 		postID, err := reposter.Repost(ctx, gc.QuoteTweetID, gc.GeneratedContent)
 		if err != nil {
 			log.Printf("LinkedIn repost failed for content %d: %v", contentID, err)
@@ -200,7 +204,7 @@ func (s *PublishService) PublishLinkedIn(ctx context.Context, userID string, con
 		return []string{postID}, []string{gc.GeneratedContent}, nil
 	}
 
-	poster := newLinkedInPoster(linkedInCfg)
+	poster := newLinkedInPoster(linkedInCfg, configDir)
 
 	// If the content has a code image, post with it attached.
 	if gc.SourceType == "commit" && gc.CodeImagePath != "" {
@@ -273,7 +277,9 @@ func (s *PublishService) CommentLinkedIn(ctx context.Context, userID string, con
 	}
 
 	uc, _ := s.db.GetUserConfig(userID)
-	commenter := newLinkedInCommenter(uc.MergedLinkedInConfig(*s.cfg))
+	configDir, configDirCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
+	defer configDirCleanup()
+	commenter := newLinkedInCommenter(uc.MergedLinkedInConfig(*s.cfg), configDir)
 	commentURN, err := commenter.CreateComment(ctx, gc.QuoteTweetID, threadURN, gc.GeneratedContent)
 	if err != nil {
 		slog.Error("linkedin comment failed", "content_id", contentID, "post_urn", gc.QuoteTweetID, "error", err)
@@ -307,7 +313,9 @@ func (s *PublishService) CommentX(ctx context.Context, userID string, contentID 
 	}
 
 	uc, _ := s.db.GetUserConfig(userID)
-	poster := newXPoster(uc.MergedXConfig(*s.cfg))
+	cookiePath, cookieCleanup, _ := writeTwikitCookieTempFile(uc.TwikitCookiesJSON)
+	defer cookieCleanup()
+	poster := newXPoster(uc.MergedXConfig(*s.cfg), cookiePath)
 	replyID, err := poster.PostReply(ctx, gc.GeneratedContent, gc.QuoteTweetID)
 	if err != nil {
 		slog.Error("x comment (reply) failed", "content_id", contentID, "tweet_id", gc.QuoteTweetID, "error", err)
@@ -356,17 +364,21 @@ func (s *PublishService) Schedule(ctx context.Context, userID string, contentID 
 
 	switch gc.TargetPlatform {
 	case "x":
+		xCookiePath, xCookieCleanup, _ := writeTwikitCookieTempFile(uc.TwikitCookiesJSON)
+		defer xCookieCleanup()
 		if gc.IsRepost && gc.QuoteTweetID != "" {
-			quoteScheduler := newXQuoteScheduler(uc.MergedXConfig(*s.cfg))
+			quoteScheduler := newXQuoteScheduler(uc.MergedXConfig(*s.cfg), xCookiePath)
 			return quoteScheduler.ScheduleQuoteTweet(ctx, gc.GeneratedContent, gc.QuoteTweetID, scheduledAt.Unix())
 		}
-		scheduler := newXScheduler(uc.MergedXConfig(*s.cfg))
+		scheduler := newXScheduler(uc.MergedXConfig(*s.cfg), xCookiePath)
 		return scheduler.ScheduleTweet(ctx, gc.GeneratedContent, scheduledAt.Unix())
 	case "linkedin":
 		if gc.IsRepost {
 			return "", fmt.Errorf("native scheduling not supported for LinkedIn reposts: content %d will be executed via RunDue", contentID)
 		}
-		linkedInPoster := newLinkedInPoster(uc.MergedLinkedInConfig(*s.cfg))
+		liConfigDir, liConfigDirCleanup, _ := writeLinkitinCookieTempDir(uc.LinkitinCookiesJSON)
+		defer liConfigDirCleanup()
+		linkedInPoster := newLinkedInPoster(uc.MergedLinkedInConfig(*s.cfg), liConfigDir)
 		// Commit posts store their image in CodeImagePath; regular AI-image posts use ImagePath.
 		imagePath := gc.ImagePath
 		if gc.SourceType == "commit" && gc.CodeImagePath != "" {
