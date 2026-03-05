@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import type { GeneratedContent } from '@/lib/types'
 import { BASE_URL } from '@/lib/api'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { Check, X, Pencil } from 'lucide-react'
+import { Check, X, Pencil, Send } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { usePlatformParam } from '@/hooks/usePlatformParam'
 
 interface VariationCardProps {
   content: GeneratedContent
@@ -58,6 +60,8 @@ function CodeImagePreview({ contentId, commitId }: { contentId: number; commitId
 }
 
 export function VariationCard({ content, onApprove, onReject, onEdit }: VariationCardProps) {
+  const navigate = useNavigate()
+  const platform = usePlatformParam()
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(content.generated_content)
   const [editDescription, setEditDescription] = useState(content.code_image_description ?? '')
@@ -166,6 +170,16 @@ export function VariationCard({ content, onApprove, onReject, onEdit }: Variatio
             Reject
           </button>
         </div>
+      )}
+
+      {!editing && content.status === 'approved' && (
+        <button
+          onClick={() => navigate(`/${platform}/publish?id=${content.id}`)}
+          className="flex items-center gap-1.5 rounded-[var(--radius-button)] bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-500"
+        >
+          <Send size={14} />
+          Publish Now
+        </button>
       )}
     </div>
   )

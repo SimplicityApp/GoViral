@@ -233,7 +233,7 @@ func (d *Daemon) GetStatus() Status {
 		if p == "linkedin" && d.linkedinPaused {
 			ps.Paused = true
 			ps.PausedAt = &d.linkedinPausedAt
-			ps.PauseReason = "LinkedIn cookies expired — run 'goviral linkitin-login' to refresh"
+			ps.PauseReason = "LinkedIn cookies expired — re-sync cookies via the browser extension or update them in Settings"
 		}
 		platforms[p] = ps
 	}
@@ -265,7 +265,7 @@ func (d *Daemon) pauseLinkedIn(ctx context.Context) {
 
 	slog.Warn("linkedin paused: cookies expired")
 	if d.tg != nil && d.cfg.Telegram.ChatID != 0 {
-		msg := "⚠️ *LinkedIn paused* — cookies expired\\.\n\nRun `goviral linkitin-login` to refresh, then the daemon will auto\\-resume\\."
+		msg := "⚠️ *LinkedIn paused* — cookies expired\\.\n\nRe\\-sync cookies via the browser extension or update them in Settings\\. The daemon will auto\\-resume\\."
 		d.sendTelegramReply(ctx, msg)
 	}
 }

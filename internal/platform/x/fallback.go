@@ -10,6 +10,8 @@ import (
 	"github.com/shuhao/goviral/pkg/models"
 )
 
+const cookieHint = "sync your X cookies via the browser extension or provide them manually in Settings"
+
 // Compile-time interface compliance checks.
 var _ models.PlatformClient = (*FallbackClient)(nil)
 var _ models.PlatformPoster = (*FallbackClient)(nil)
@@ -90,7 +92,7 @@ func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikit == nil {
-			return nil, fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return nil, fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -103,7 +105,7 @@ func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models
 
 	// Primary already known to be down — go straight to twikit.
 	if fc.twikit == nil {
-		return nil, fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return nil, fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikit.FetchMyPosts(ctx, limit)
 }
@@ -118,7 +120,7 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikit == nil {
-			return nil, fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return nil, fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), using twikit fallback", primaryErr)
@@ -131,7 +133,7 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 
 	// Primary already known to be down — go straight to twikit.
 	if fc.twikit == nil {
-		return nil, fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return nil, fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikit.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
 }
@@ -146,7 +148,7 @@ func (fc *FallbackClient) PostTweet(ctx context.Context, text string) (string, e
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -159,7 +161,7 @@ func (fc *FallbackClient) PostTweet(ctx context.Context, text string) (string, e
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikitPoster.PostTweet(ctx, text)
 }
@@ -174,7 +176,7 @@ func (fc *FallbackClient) PostReply(ctx context.Context, text string, inReplyToI
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -187,7 +189,7 @@ func (fc *FallbackClient) PostReply(ctx context.Context, text string, inReplyToI
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikitPoster.PostReply(ctx, text, inReplyToID)
 }
@@ -202,7 +204,7 @@ func (fc *FallbackClient) UploadMedia(ctx context.Context, imageData []byte, mim
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -214,7 +216,7 @@ func (fc *FallbackClient) UploadMedia(ctx context.Context, imageData []byte, mim
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikitPoster.UploadMedia(ctx, imageData, mimeType)
 }
@@ -229,7 +231,7 @@ func (fc *FallbackClient) PostTweetWithMedia(ctx context.Context, text string, m
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -242,7 +244,7 @@ func (fc *FallbackClient) PostTweetWithMedia(ctx context.Context, text string, m
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikitPoster.PostTweetWithMedia(ctx, text, mediaIDs)
 }
@@ -257,7 +259,7 @@ func (fc *FallbackClient) PostReplyWithMedia(ctx context.Context, text string, i
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback...", primaryErr)
@@ -270,7 +272,7 @@ func (fc *FallbackClient) PostReplyWithMedia(ctx context.Context, text string, i
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	return fc.twikitPoster.PostReplyWithMedia(ctx, text, inReplyToID, mediaIDs)
 }
@@ -285,7 +287,7 @@ func (fc *FallbackClient) PostQuoteTweet(ctx context.Context, text string, quote
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.twikitPoster == nil {
-			return "", fmt.Errorf("primary API failed: %w (twikit fallback unavailable)", primaryErr)
+			return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 		}
 
 		log.Printf("primary X API failed (%v), trying twikit fallback for quote tweet (quoting %s)...", primaryErr, quoteTweetID)
@@ -299,7 +301,7 @@ func (fc *FallbackClient) PostQuoteTweet(ctx context.Context, text string, quote
 	}
 
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("primary API disabled (twikit fallback unavailable)")
+		return "", fmt.Errorf("X cookies not configured — %s", cookieHint)
 	}
 	id, err := fc.twikitPoster.PostQuoteTweet(ctx, text, quoteTweetID)
 	if err != nil {
@@ -311,7 +313,7 @@ func (fc *FallbackClient) PostQuoteTweet(ctx context.Context, text string, quote
 // ScheduleTweet schedules a tweet via twikit (X API v2 doesn't support scheduled tweets).
 func (fc *FallbackClient) ScheduleTweet(ctx context.Context, text string, scheduledAtUnix int64) (string, error) {
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("scheduled tweets require twikit (cookie-based auth); twikit is unavailable")
+		return "", fmt.Errorf("scheduled tweets require cookies — %s", cookieHint)
 	}
 	tc, ok := fc.twikitPoster.(*TwikitClient)
 	if !ok {
@@ -323,7 +325,7 @@ func (fc *FallbackClient) ScheduleTweet(ctx context.Context, text string, schedu
 // ScheduleQuoteTweet schedules a quote tweet via twikit (X API v2 doesn't support scheduled tweets).
 func (fc *FallbackClient) ScheduleQuoteTweet(ctx context.Context, text string, quoteTweetID string, scheduledAtUnix int64) (string, error) {
 	if fc.twikitPoster == nil {
-		return "", fmt.Errorf("scheduled quote tweets require twikit (cookie-based auth); twikit is unavailable")
+		return "", fmt.Errorf("scheduled quote tweets require cookies — %s", cookieHint)
 	}
 	tc, ok := fc.twikitPoster.(*TwikitClient)
 	if !ok {

@@ -11,6 +11,8 @@ import (
 	"github.com/shuhao/goviral/pkg/models"
 )
 
+const cookieHint = "sync your LinkedIn cookies via the browser extension or provide them manually in Settings"
+
 // Compile-time interface compliance checks.
 var _ models.PlatformClient = (*FallbackClient)(nil)
 var _ models.LinkedInPoster = (*FallbackClient)(nil)
@@ -91,7 +93,7 @@ func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.linkitin == nil {
-			return nil, fmt.Errorf("official LinkedIn API failed: %w (linkitin fallback unavailable)", primaryErr)
+			return nil, fmt.Errorf("LinkedIn cookies not configured — %s", cookieHint)
 		}
 
 		slog.Info("linkedin primary API failed, trying linkitin fallback", "error", primaryErr)
@@ -104,7 +106,7 @@ func (fc *FallbackClient) FetchMyPosts(ctx context.Context, limit int) ([]models
 
 	// Primary already known to be down - go straight to linkitin.
 	if fc.linkitin == nil {
-		return nil, fmt.Errorf("official LinkedIn API disabled (linkitin fallback unavailable)")
+		return nil, fmt.Errorf("LinkedIn cookies not configured — %s", cookieHint)
 	}
 	slog.Info("linkedin using linkitin fallback for FetchMyPosts")
 	return fc.linkitin.FetchMyPosts(ctx, limit)
@@ -120,7 +122,7 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 		fc.checkDisablePrimary(primaryErr)
 
 		if fc.linkitin == nil {
-			return nil, fmt.Errorf("official LinkedIn API failed: %w (linkitin fallback unavailable)", primaryErr)
+			return nil, fmt.Errorf("LinkedIn cookies not configured — %s", cookieHint)
 		}
 
 		slog.Info("linkedin primary API failed, trying linkitin fallback", "error", primaryErr)
@@ -132,7 +134,7 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 	}
 
 	if fc.linkitin == nil {
-		return nil, fmt.Errorf("official LinkedIn API disabled (linkitin fallback unavailable)")
+		return nil, fmt.Errorf("LinkedIn cookies not configured — %s", cookieHint)
 	}
 	slog.Info("linkedin using linkitin fallback for FetchTrendingPosts", "niches", niches)
 	return fc.linkitin.FetchTrendingPosts(ctx, niches, period, minLikes, limit)
@@ -141,7 +143,7 @@ func (fc *FallbackClient) FetchTrendingPosts(ctx context.Context, niches []strin
 // CreatePost creates a LinkedIn post via linkitin (official API has no posting support).
 func (fc *FallbackClient) CreatePost(ctx context.Context, text string) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn posting requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn posting requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.CreatePost(ctx, text)
 }
@@ -149,7 +151,7 @@ func (fc *FallbackClient) CreatePost(ctx context.Context, text string) (string, 
 // UploadImage uploads an image to LinkedIn via linkitin (official API has no posting support).
 func (fc *FallbackClient) UploadImage(ctx context.Context, imageData []byte, filename string) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn image upload requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn image upload requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.UploadImage(ctx, imageData, filename)
 }
@@ -157,7 +159,7 @@ func (fc *FallbackClient) UploadImage(ctx context.Context, imageData []byte, fil
 // CreatePostWithImage creates a LinkedIn post with an image via linkitin (official API has no posting support).
 func (fc *FallbackClient) CreatePostWithImage(ctx context.Context, text string, imageData []byte, filename string) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn posting requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn posting requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.CreatePostWithImage(ctx, text, imageData, filename)
 }
@@ -165,7 +167,7 @@ func (fc *FallbackClient) CreatePostWithImage(ctx context.Context, text string, 
 // Repost reshares an existing LinkedIn post via linkitin (official API has no repost support).
 func (fc *FallbackClient) Repost(ctx context.Context, postURN string, text string) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn repost requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn repost requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.Repost(ctx, postURN, text)
 }
@@ -174,8 +176,8 @@ func (fc *FallbackClient) Repost(ctx context.Context, postURN string, text strin
 // threadURN is the optional urn:li:ugcPost:N for ugcPost threads; pass "" to let linkitin derive it.
 func (fc *FallbackClient) CreateComment(ctx context.Context, postURN string, threadURN string, text string) (string, error) {
 	if fc.linkitinPoster == nil {
-		slog.Error("linkedin comment skipped: linkitin unavailable (run 'goviral linkitin-login')")
-		return "", fmt.Errorf("LinkedIn commenting requires linkitin (cookie-based auth); linkitin is unavailable")
+		slog.Error("linkedin comment skipped: cookies not configured")
+		return "", fmt.Errorf("LinkedIn commenting requires cookies — %s", cookieHint)
 	}
 	slog.Info("linkedin using linkitin for comment", "post_urn", postURN)
 	return fc.linkitinPoster.CreateComment(ctx, postURN, threadURN, text)
@@ -184,7 +186,7 @@ func (fc *FallbackClient) CreateComment(ctx context.Context, postURN string, thr
 // CreateScheduledPost schedules a LinkedIn post via linkitin (official API has no scheduling support).
 func (fc *FallbackClient) CreateScheduledPost(ctx context.Context, text string, scheduledAt time.Time) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn scheduling requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn scheduling requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.CreateScheduledPost(ctx, text, scheduledAt)
 }
@@ -192,7 +194,7 @@ func (fc *FallbackClient) CreateScheduledPost(ctx context.Context, text string, 
 // CreateScheduledPostWithImage schedules a LinkedIn post with an image via linkitin (official API has no scheduling support).
 func (fc *FallbackClient) CreateScheduledPostWithImage(ctx context.Context, text string, imageData []byte, filename string, scheduledAt time.Time) (string, error) {
 	if fc.linkitinPoster == nil {
-		return "", fmt.Errorf("LinkedIn scheduling requires linkitin (cookie-based auth); linkitin is unavailable")
+		return "", fmt.Errorf("LinkedIn scheduling requires cookies — %s", cookieHint)
 	}
 	return fc.linkitinPoster.CreateScheduledPostWithImage(ctx, text, imageData, filename, scheduledAt)
 }

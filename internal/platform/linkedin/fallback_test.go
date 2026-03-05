@@ -112,7 +112,7 @@ func TestFallbackClient_LinkitinNil(t *testing.T) {
 		t.Fatal("expected error when linkitin is nil, got nil")
 	}
 	errMsg := err.Error()
-	if errMsg != "official LinkedIn API failed: primary error (linkitin fallback unavailable)" {
+	if errMsg != "LinkedIn cookies not configured — sync your LinkedIn cookies via the browser extension or provide them manually in Settings" {
 		t.Errorf("unexpected error message: %s", errMsg)
 	}
 }

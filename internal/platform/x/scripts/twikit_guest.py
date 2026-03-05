@@ -398,7 +398,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -433,7 +433,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -461,7 +461,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -489,7 +489,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -516,7 +516,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -544,7 +544,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)
@@ -572,7 +572,7 @@ def main():
 
         if not os.path.exists(COOKIES_PATH):
             json.dump(
-                {"error": "not logged in: run 'goviral twikit-login' first to extract cookies from Chrome"},
+                {"error": "X cookies not found — sync cookies via the browser extension or provide them in Settings"},
                 sys.stdout,
             )
             sys.exit(1)

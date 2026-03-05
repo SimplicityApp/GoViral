@@ -77,7 +77,7 @@ func TestFallbackClient_TwikitNil(t *testing.T) {
 		t.Fatal("expected error when twikit is nil, got nil")
 	}
 	errMsg := err.Error()
-	if errMsg != "primary API failed: primary error (twikit fallback unavailable)" {
+	if errMsg != "X cookies not configured — sync your X cookies via the browser extension or provide them manually in Settings" {
 		t.Errorf("unexpected error message: %s", errMsg)
 	}
 }

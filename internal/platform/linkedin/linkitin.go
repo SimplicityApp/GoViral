@@ -263,7 +263,7 @@ func (c *LinkitinClient) FetchTrendingPosts(ctx context.Context, niches []string
 	// If every niche failed AND the feed also failed, surface an error so the
 	// caller (and the daemon) can alert the user — mirrors twikit's behaviour.
 	if len(allPosts) == 0 && nicheErrors == len(niches) && feedErr != nil {
-		return nil, fmt.Errorf("all linkedin fetches failed (session likely expired) — re-run 'goviral linkitin-login'")
+		return nil, fmt.Errorf("LinkedIn session expired — re-sync cookies via the browser extension or update them in Settings")
 	}
 
 	if limit > 0 && len(allPosts) > limit {
