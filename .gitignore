@@ -18,7 +18,7 @@ vendor/
 # Environment and config (contain secrets)
 .env
 .env.*
-config.yaml
+config*.yaml
 
 # SQLite databases
 *.db
