@@ -37,10 +37,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Niches: []string{},
 	}
 
-	// Claude API key
-	fmt.Print("Claude API key: ")
-	cfg.Claude.APIKey = readLine(reader)
-
 	// X/Twitter credentials
 	fmt.Println("\n--- X (Twitter) Configuration ---")
 	fmt.Print("X Bearer Token: ")

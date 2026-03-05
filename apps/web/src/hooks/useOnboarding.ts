@@ -22,7 +22,6 @@ interface StepDef {
 const ALL_STEPS: StepDef[] = [
   { id: 'welcome', label: 'Welcome' },
   { id: 'platforms', label: 'Platforms' },
-  { id: 'ai-keys', label: 'AI Keys' },
   { id: 'install-extension', label: 'Extension', visibleWhen: (p) => p.has('x') || p.has('linkedin') },
   { id: 'connect-x', label: 'Connect X', visibleWhen: (p) => p.has('x') },
   { id: 'connect-linkedin', label: 'Connect LinkedIn', visibleWhen: (p) => p.has('linkedin') },
@@ -34,9 +33,10 @@ const ALL_STEPS: StepDef[] = [
 function derivePlatformsFromConfig(config?: AppConfig): Set<string> | null {
   if (!config) return null
   const platforms = new Set<string>()
-  if (config.x.username || config.x.has_twikit_auth) platforms.add('x')
-  if (config.linkedin.has_linkitin_auth) platforms.add('linkedin')
-  if (config.github?.has_pat || config.github?.has_oauth) platforms.add('github')
+  // Only use per-user auth indicators — not global server config like username or has_pat.
+  if (config.x.has_auth || config.x.has_twikit_auth) platforms.add('x')
+  if (config.linkedin.has_auth || config.linkedin.has_linkitin_auth) platforms.add('linkedin')
+  if (config.github?.has_auth) platforms.add('github')
   return platforms.size > 0 ? platforms : null
 }
 

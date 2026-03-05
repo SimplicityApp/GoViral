@@ -7,7 +7,6 @@ import { ProgressIndicator } from './onboarding/ProgressIndicator'
 import { StepNavigation } from './onboarding/StepNavigation'
 import { WelcomeStep } from './onboarding/WelcomeStep'
 import { PlatformsStep } from './onboarding/PlatformsStep'
-import { AIKeysStep } from './onboarding/AIKeysStep'
 import { ConnectXStep } from './onboarding/ConnectXStep'
 import { ConnectLinkedInStep } from './onboarding/ConnectLinkedInStep'
 import { ConnectGitHubStep } from './onboarding/ConnectGitHubStep'
@@ -54,8 +53,6 @@ export function Onboarding() {
             onToggle={togglePlatform}
           />
         )
-      case 'ai-keys':
-        return <AIKeysStep config={config} />
       case 'install-extension':
         return <InstallExtensionStep extension={extension} onRecheck={saveAndReload} />
       case 'connect-x':
